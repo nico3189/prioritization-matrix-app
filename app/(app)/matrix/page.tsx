@@ -1,8 +1,8 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
-import Link from 'next/link'
+import { useMemo, useState } from 'react'
+import { TaskOverlay } from '@/components/task-overlay'
 
 function useMatrixTasks() {
   return useQuery({
@@ -19,6 +19,7 @@ const QUADRANTS = [
 ] as const
 
 export default function MatrixPage() {
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const { data: tasks = [], isLoading } = useMatrixTasks()
   function getQuadrant(importance: number, urgency: number) {
     if (importance >= 60 && urgency >= 60) return 'Q1'
@@ -66,9 +67,10 @@ export default function MatrixPage() {
                   urgency?: number | null
                 }) => (
                   <li key={task.id}>
-                    <Link
-                      href={`/clarify?id=${task.id}`}
-                      className="block bg-app-card rounded-lg p-4 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTaskId(task.id)}
+                      className="block w-full text-left bg-app-card rounded-lg p-4 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
                     >
                       <p className="text-base font-medium text-slate-100">{task.title}</p>
                       {task.nextAction && (
@@ -77,7 +79,7 @@ export default function MatrixPage() {
                       <p className="text-xs text-app-muted mt-1">
                         Score: {(0.65 * (task.importance ?? 0) + 0.35 * (task.urgency ?? 0)).toFixed(0)}
                       </p>
-                    </Link>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -85,6 +87,11 @@ export default function MatrixPage() {
           ))}
         </div>
       )}
+
+      <TaskOverlay
+        taskId={selectedTaskId}
+        onClose={() => setSelectedTaskId(null)}
+      />
     </div>
   )
 }

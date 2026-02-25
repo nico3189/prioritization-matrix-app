@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import Link from 'next/link'
+import { TaskOverlay } from '@/components/task-overlay'
 
 function useInboxTasks() {
   return useQuery({
@@ -49,6 +49,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function InboxPage() {
   const [input, setInput] = useState('')
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { data: tasks = [], isLoading, isError, error, refetch } = useInboxTasks()
   const createTask = useCreateTask()
@@ -118,9 +119,10 @@ export default function InboxPage() {
             nextAction?: string | null
           }) => (
             <li key={task.id}>
-              <Link
-                href={`/clarify?id=${task.id}`}
-                className="block bg-app-card rounded-xl2 p-5 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
+              <button
+                type="button"
+                onClick={() => setSelectedTaskId(task.id)}
+                className="block w-full text-left bg-app-card rounded-xl2 p-5 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -143,11 +145,16 @@ export default function InboxPage() {
                 <p className="text-xs text-app-muted mt-2">
                   {new Date(task.createdAt).toLocaleDateString('da-DK')}
                 </p>
-              </Link>
+              </button>
             </li>
           ))}
         </ul>
       )}
+
+      <TaskOverlay
+        taskId={selectedTaskId}
+        onClose={() => setSelectedTaskId(null)}
+      />
     </div>
   )
 }

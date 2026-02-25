@@ -1,8 +1,8 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import Link from 'next/link'
-import { cn } from '@/lib/utils'
+import { useState } from 'react'
+import { TaskOverlay } from '@/components/task-overlay'
 
 function useTodayTasks() {
   return useQuery({
@@ -12,6 +12,7 @@ function useTodayTasks() {
 }
 
 export default function TodayPage() {
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const { data: tasks = [], isLoading } = useTodayTasks()
 
   return (
@@ -33,9 +34,10 @@ export default function TodayPage() {
             urgency?: number | null
           }) => (
             <li key={task.id}>
-              <Link
-                href={`/clarify?id=${task.id}`}
-                className="block bg-app-card rounded-xl2 p-5 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
+              <button
+                type="button"
+                onClick={() => setSelectedTaskId(task.id)}
+                className="block w-full text-left bg-app-card rounded-xl2 p-5 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
               >
                 <p className="text-base font-medium text-slate-100">{task.title}</p>
                 {task.nextAction && (
@@ -46,11 +48,16 @@ export default function TodayPage() {
                     ? new Date(task.dueAt).toLocaleString('da-DK')
                     : `I/U: ${task.importance ?? 0}/${task.urgency ?? 0}`}
                 </p>
-              </Link>
+              </button>
             </li>
           ))}
         </ul>
       )}
+
+      <TaskOverlay
+        taskId={selectedTaskId}
+        onClose={() => setSelectedTaskId(null)}
+      />
     </div>
   )
 }
