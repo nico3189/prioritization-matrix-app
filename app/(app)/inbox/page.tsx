@@ -8,19 +8,28 @@ import Link from 'next/link'
 function useInboxTasks() {
   return useQuery({
     queryKey: ['tasks', 'inbox'],
-    queryFn: () => fetch('/api/tasks').then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch('/api/tasks')
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.error ?? `Fejl ${r.status}`)
+      return data
+    },
   })
 }
 
 function useCreateTask() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (rawText: string) =>
-      fetch('/api/tasks', {
+    mutationFn: async (rawText: string) => {
+      const r = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rawText }),
-      }).then((r) => r.json()),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.error ?? data?.message ?? `Fejl ${r.status}`)
+      return data
+    },
     onSuccess: (task) => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       return fetch(`/api/tasks/${task.id}/parse`, { method: 'POST' }).then(() => {
@@ -41,7 +50,7 @@ const STATUS_LABEL: Record<string, string> = {
 export default function InboxPage() {
   const [input, setInput] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const { data: tasks = [], isLoading, refetch } = useInboxTasks()
+  const { data: tasks = [], isLoading, isError, error, refetch } = useInboxTasks()
   const createTask = useCreateTask()
 
   useEffect(() => {
@@ -78,10 +87,27 @@ export default function InboxPage() {
           disabled={createTask.isPending}
         />
         <p className="text-xs text-app-muted mt-1">Enter opretter øjeblikkeligt; AI parser kører derefter.</p>
+        {createTask.isError && (
+          <p className="mt-2 text-sm text-app-danger">
+            Kunne ikke oprette opgave: {createTask.error?.message}
+          </p>
+        )}
       </div>
 
       {isLoading ? (
         <p className="text-sm text-app-muted">Henter opgaver...</p>
+      ) : isError ? (
+        <div className="rounded-lg border border-app-danger/30 bg-app-danger/10 p-4 text-sm text-slate-200">
+          <p className="font-medium">Kunne ikke hente opgaver</p>
+          <p className="mt-1 text-app-muted">{error?.message ?? 'Ukendt fejl'}</p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="mt-3 text-app-accent hover:underline"
+          >
+            Prøv igen
+          </button>
+        </div>
       ) : (
         <ul className="space-y-4">
           {tasks.map((task: {
