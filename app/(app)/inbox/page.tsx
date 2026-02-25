@@ -21,20 +21,27 @@ function useCreateTask() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (rawText: string) => {
-      const r = await fetch('/api/tasks', {
+      const createRes = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rawText }),
       })
-      const data = await r.json()
-      if (!r.ok) throw new Error(data?.error ?? data?.message ?? `Fejl ${r.status}`)
-      return data
+      const task = await createRes.json()
+      if (!createRes.ok) throw new Error(task?.error ?? task?.message ?? `Fejl ${createRes.status}`)
+      try {
+        const parseRes = await fetch(`/api/tasks/${task.id}/parse`, { method: 'POST' })
+        if (!parseRes.ok) {
+          const err = await parseRes.json().catch(() => ({}))
+          console.warn('AI parse failed:', err)
+        }
+      } catch (e) {
+        console.warn('AI parse error:', e)
+      }
+      return task
     },
     onSuccess: (task) => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
-      return fetch(`/api/tasks/${task.id}/parse`, { method: 'POST' }).then(() => {
-        qc.invalidateQueries({ queryKey: ['tasks'] })
-      })
+      qc.invalidateQueries({ queryKey: ['task', task.id] })
     },
   })
 }
@@ -69,7 +76,7 @@ export default function InboxPage() {
   return (
     <div>
       <h1 className="text-3xl font-semibold text-slate-100 mb-2">Inbox</h1>
-      <p className="text-xs text-app-muted mb-6">Lynhurtig capture. Enter = opret opgave.</p>
+      <p className="text-xs text-app-muted mb-6">Lynhurtig capture. ⌘+Enter (Mac) / Ctrl+Enter (PC) = opret opgave.</p>
 
       <div className="mb-6">
         <textarea
@@ -77,17 +84,21 @@ export default function InboxPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault()
               handleSubmit()
             }
           }}
-          placeholder="Skriv eller indsæt en opgave (Enter = opret)"
+          placeholder="Skriv eller indsæt en opgave (⌘+Enter / Ctrl+Enter = opret)"
           rows={2}
           className="w-full bg-slate-900/60 border border-white/5 rounded-lg px-4 py-3 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40 resize-none"
           disabled={createTask.isPending}
         />
-        <p className="text-xs text-app-muted mt-1">Enter opretter øjeblikkeligt; AI parser kører derefter.</p>
+        <p className="text-xs text-app-muted mt-1">
+          {createTask.isPending
+            ? 'Opretter og kvalificerer med AI...'
+            : '⌘+Enter / Ctrl+Enter opretter opgave; AI udfylder felter.'}
+        </p>
         {createTask.isError && (
           <p className="mt-2 text-sm text-app-danger">
             Kunne ikke oprette opgave: {createTask.error?.message}

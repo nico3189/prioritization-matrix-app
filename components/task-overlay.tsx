@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const DURATION_BUCKETS = [
   { value: 'LT15', label: 'Under 15 min' },
@@ -58,6 +58,7 @@ interface TaskFormState {
   title: string
   notes: string
   customerId: string
+  importance: string
   urgency: string
   durationBucket: string
   reviewAt: string
@@ -71,6 +72,7 @@ function emptyForm(): TaskFormState {
     title: '',
     notes: '',
     customerId: '',
+    importance: '',
     urgency: '',
     durationBucket: '',
     reviewAt: '',
@@ -84,6 +86,7 @@ function formFromTask(task: {
   title?: string | null
   notes?: string | null
   customerId?: string | null
+  importance?: number | null
   urgency?: number | null
   durationBucket?: string | null
   reviewAt?: string | null
@@ -95,6 +98,7 @@ function formFromTask(task: {
     title: task.title ?? '',
     notes: task.notes ?? '',
     customerId: task.customerId ?? '',
+    importance: task.importance != null ? String(task.importance) : '',
     urgency: task.urgency != null ? String(task.urgency) : '',
     durationBucket: task.durationBucket ?? '',
     reviewAt: task.reviewAt
@@ -118,6 +122,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   const updateTask = useUpdateTask()
   const [form, setForm] = useState<TaskFormState>(emptyForm)
   const [tagInput, setTagInput] = useState('')
+  const backdropClickedRef = useRef(false)
 
   useEffect(() => {
     if (task) setForm(formFromTask(task))
@@ -160,6 +165,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
       title: form.title.trim() || undefined,
       notes: form.notes.trim() || undefined,
       customerId: form.customerId || null,
+      importance: form.importance === '' ? undefined : Number(form.importance),
       urgency: form.urgency === '' ? undefined : Number(form.urgency),
       durationBucket: form.durationBucket,
       reviewAt: form.reviewAt ? new Date(form.reviewAt).toISOString() : null,
@@ -181,10 +187,17 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="task-overlay-title"
-      onClick={onClose}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) backdropClickedRef.current = true
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && backdropClickedRef.current) onClose()
+        backdropClickedRef.current = false
+      }}
     >
       <div
         className="bg-app-card rounded-xl2 shadow-card border border-white/10 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        onMouseDown={() => { backdropClickedRef.current = false }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between shrink-0 border-b border-white/5 px-5 py-3">
@@ -262,6 +275,18 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                       )
                     )}
                   </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Vigtighed (0–100)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={form.importance}
+                    onChange={(e) => update({ importance: e.target.value })}
+                    placeholder="–"
+                    className={inputClass}
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>Hastegrad (0–100)</label>
