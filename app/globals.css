@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --app-bg: #0B1120;
+  --app-surface: #0F172A;
+  --app-card: #111827;
+  --app-muted: #94A3B8;
+  --app-accent: #3B82F6;
+  --app-success: #22C55E;
+  --app-danger: #EF4444;
+}
+
+body {
+  @apply bg-app-bg text-slate-200 antialiased leading-relaxed;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}

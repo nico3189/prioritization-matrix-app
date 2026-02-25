@@ -1,0 +1,9 @@
+{
+  "name": "Prioritization Matrix",
+  "short_name": "Prioritization",
+  "description": "Eisenhower todo med AI og Google Calendar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B1120",
+  "theme_color": "#3B82F6"
+}

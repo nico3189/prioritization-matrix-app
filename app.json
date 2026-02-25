@@ -1,0 +1,28 @@
+{
+  "name": "prioritization-matrix-app",
+  "description": "Eisenhower todo app with AI Smart Input and Google Calendar",
+  "buildpacks": [
+    { "url": "heroku/nodejs" }
+  ],
+  "formation": {
+    "web": { "quantity": 1 }
+  },
+  "addons": [
+    { "plan": "heroku-postgresql:essential-0" }
+  ],
+  "env": {
+    "NEXTAUTH_URL": {
+      "description": "Full app URL",
+      "value": "https://prioritization-matrix-app.herokuapp.com",
+      "required": true
+    },
+    "NEXTAUTH_SECRET": {
+      "description": "NextAuth secret",
+      "generator": "secret",
+      "required": true
+    }
+  },
+  "scripts": {
+    "postdeploy": "npx prisma migrate deploy"
+  }
+}
