@@ -1,0 +1,229 @@
+---
+alwaysApply: true
+---
+
+# UI Design Rules — Dark Premium To-Do App
+Stack: Next.js + Tailwind CSS  
+Theme: Calm, dark, layered cards
+
+---
+
+# 1. Design Principles
+
+- Dark navy background (NOT pure black)
+- Cards are primary interaction surface
+- No harsh borders
+- Subtle shadows for depth
+- 8px spacing system
+- Smooth 150–250ms transitions
+- Only one dominant CTA per screen
+
+---
+
+# 2. Tailwind Theme Extension (tailwind.config.js)
+
+```js
+theme: {
+  extend: {
+    colors: {
+      app: {
+        bg: '#0B1120',        // main background (deep navy)
+        surface: '#0F172A',   // sidebar / elevated surfaces
+        card: '#111827',      // card background
+        muted: '#94A3B8',     // secondary text
+        accent: '#3B82F6',    // primary action blue
+        success: '#22C55E',
+        danger: '#EF4444'
+      }
+    },
+    boxShadow: {
+      card: '0 10px 30px rgba(0,0,0,0.35)',
+      hover: '0 14px 40px rgba(0,0,0,0.45)'
+    },
+    borderRadius: {
+      xl2: '18px'
+    }
+  }
+}
+```
+
+---
+
+# 3. Layout Rules
+
+## Desktop Layout
+```
+| Sidebar (260px fixed) | Main Content (flex-1) |
+```
+
+### Sidebar
+- `w-[260px]`
+- `bg-app-surface`
+- `border-r border-white/5`
+- Active nav item:
+  - `bg-app-accent/10`
+  - `border-l-4 border-app-accent`
+
+### Main Content
+- `flex-1`
+- `p-8`
+- Max width wrapper: `max-w-7xl mx-auto`
+
+---
+
+# 4. Typography Rules
+
+| Element        | Classes |
+|---------------|----------|
+| Page Title     | `text-3xl font-semibold text-slate-100` |
+| Section Title  | `text-lg font-medium text-slate-200` |
+| Card Title     | `text-base font-medium text-slate-100` |
+| Body Text      | `text-sm text-slate-300` |
+| Meta Text      | `text-xs text-app-muted` |
+
+Font suggestion:
+```
+font-sans (Inter / Geist / SF Pro style)
+```
+
+Line height:
+```
+leading-relaxed
+```
+
+---
+
+# 5. Card Component Rules
+
+## Base Card
+```html
+<div class="bg-app-card rounded-xl2 p-5 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10">
+</div>
+```
+
+### Card Structure
+```
+Title
+Description
+Meta row (date / tag)
+Action icons (right aligned)
+```
+
+### Spacing
+- Internal padding: `p-5`
+- Gap between cards: `gap-6`
+- Grid layout:
+  - Desktop: `grid grid-cols-3 gap-6`
+  - Tablet: `md:grid-cols-2`
+  - Mobile: `grid-cols-1`
+
+---
+
+# 6. Search Input Rules
+
+```html
+<input
+  class="w-full bg-slate-900/60 border border-white/5 rounded-lg px-4 py-2 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40"
+/>
+```
+
+Rules:
+- Rounded corners
+- No bright borders
+- Blue glow on focus
+- Placeholder muted
+
+---
+
+# 7. Buttons
+
+## Primary Button
+```html
+<button class="bg-app-accent text-white px-4 py-2 rounded-lg text-sm font-medium shadow-md hover:opacity-90 active:scale-95 transition">
+</button>
+```
+
+## Ghost Button
+```html
+<button class="text-slate-300 hover:text-white transition">
+</button>
+```
+
+---
+
+# 8. Floating Action Button (Mobile)
+
+```html
+<button class="fixed bottom-6 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-app-accent shadow-hover flex items-center justify-center text-white text-2xl transition active:scale-95">
+  +
+</button>
+```
+
+Rules:
+- Always centered bottom
+- Stronger shadow than cards
+- Only visible on mobile
+
+---
+
+# 9. State Rules
+
+## Completed Task
+- Reduce opacity slightly: `opacity-70`
+- Add success indicator: `text-app-success`
+- Checkbox filled
+
+## Favorited
+- Icon filled
+- `text-app-accent`
+
+## Hover Behavior
+- Lift: `hover:-translate-y-0.5`
+- Shadow increase
+- Slight border highlight
+
+---
+
+# 10. Spacing System
+
+Use 8px base grid.
+
+| Token | Value |
+|-------|--------|
+| xs | 4px |
+| sm | 8px |
+| md | 16px |
+| lg | 24px |
+| xl | 32px |
+
+Tailwind equivalents:
+```
+p-1  p-2  p-4  p-6  p-8
+gap-2 gap-4 gap-6 gap-8
+```
+
+No random spacing values.
+
+---
+
+# 11. Motion Rules
+
+- Transition duration: `duration-200`
+- Easing: default ease-in-out
+- Hover: subtle
+- Modals: fade + scale (opacity + scale 0.98 → 1)
+
+---
+
+# 12. What To Avoid
+
+- Pure black background
+- Bright white text (#ffffff)
+- Hard borders everywhere
+- Large drop shadows
+- Multiple primary CTAs on one screen
+- Too many visible icons
+
+---
+
+End of Design Rules
