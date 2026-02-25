@@ -52,6 +52,7 @@ Ingen opfundne datoer; ved usikkerhed brug needsMoreInfo.
 Én inputtekst = én task.
 Vigtighed vægtes højt for: delegation/skalering, kundeopfølgning før møder, nye kunder/salg.
 nextAction skal være 1 konkret sætning.
+durationBucket SKAL være én af: LT15, M15_30, M30_60, GT60 (brug M30_60 for "ca 30-45 min", GT60 for over 1 time).
 Returnér kun gyldig JSON, ingen markdown.`
 
 export async function parseSmartInput(input: ParserInput): Promise<ParserOutput> {
@@ -66,7 +67,7 @@ customerNames: ${JSON.stringify(input.customerNames)}
 teamMemberNames: ${JSON.stringify(input.teamMemberNames)}
 calendarEvents: ${eventsStr}
 
-Return strict JSON with: title, type, durationBucket, customer, canDelegate, delegatedTo, linkedEventId, linkedEventType, dueAt, reviewAt, importance (0-100), urgency (0-100), quadrant (Q1-Q4), score, nextAction, needsMoreInfo, overallConfidence, suggestions (per field: value, confidence, evidence), matches (matchedCustomer, matchedEvent, matchScore).`
+Return strict JSON with: title, type, durationBucket (only: LT15 | M15_30 | M30_60 | GT60), customer, canDelegate, delegatedTo, linkedEventId, linkedEventType, dueAt (ISO), reviewAt (ISO), importance (0-100), urgency (0-100), quadrant (Q1-Q4), score, nextAction, needsMoreInfo, overallConfidence, suggestions, matches.`
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -81,7 +82,25 @@ Return strict JSON with: title, type, durationBucket, customer, canDelegate, del
   if (!raw) return {}
   try {
     const parsed = JSON.parse(raw)
-    return parserOutputSchema.parse(parsed) as ParserOutput
+    const parsedSchema = parserOutputSchema.safeParse(parsed)
+    if (parsedSchema.success) return parsedSchema.data as ParserOutput
+    const obj = parsed as Record<string, unknown>
+    const durationBuckets = ['LT15', 'M15_30', 'M30_60', 'GT60'] as const
+    const safe: ParserOutput = {}
+    if (typeof obj.title === 'string') safe.title = obj.title
+    if (typeof obj.customer === 'string' || obj.customer === null) safe.customer = obj.customer
+    if (typeof obj.delegatedTo === 'string' || obj.delegatedTo === null) safe.delegatedTo = obj.delegatedTo
+    if (durationBuckets.includes(obj.durationBucket as (typeof durationBuckets)[number])) {
+      safe.durationBucket = obj.durationBucket as DurationBucket
+    }
+    if (typeof obj.importance === 'number' && obj.importance >= 0 && obj.importance <= 100) safe.importance = obj.importance
+    if (typeof obj.urgency === 'number' && obj.urgency >= 0 && obj.urgency <= 100) safe.urgency = obj.urgency
+    if (typeof obj.nextAction === 'string' || obj.nextAction === null) safe.nextAction = obj.nextAction
+    if (typeof obj.dueAt === 'string' || obj.dueAt === null) safe.dueAt = obj.dueAt
+    if (typeof obj.reviewAt === 'string' || obj.reviewAt === null) safe.reviewAt = obj.reviewAt
+    if (typeof obj.type === 'string' && ['kunde', 'internt', 'salg', 'privat'].includes(obj.type)) safe.type = obj.type as TaskType
+    if (typeof obj.canDelegate === 'boolean') safe.canDelegate = obj.canDelegate
+    return safe
   } catch {
     return {}
   }

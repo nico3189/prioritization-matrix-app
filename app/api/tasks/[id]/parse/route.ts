@@ -37,7 +37,16 @@ export async function POST(
     teamMemberNames: teamMembers.map((t) => t.name),
     calendarEvents: [],
   }
-  const result = await parseSmartInput(parserInput)
+  let result: Awaited<ReturnType<typeof parseSmartInput>>
+  try {
+    result = await parseSmartInput(parserInput)
+  } catch (err) {
+    console.error('[parse] AI parse failed:', err)
+    return NextResponse.json(
+      { error: 'AI kunne ikke kvalificere opgaven', code: 'PARSE_FAILED' },
+      { status: 503 }
+    )
+  }
   let customerId: string | null = null
   if (result.customer) {
     const match = customers.find(

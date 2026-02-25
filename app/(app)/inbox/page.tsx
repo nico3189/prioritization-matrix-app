@@ -28,20 +28,23 @@ function useCreateTask() {
       })
       const task = await createRes.json()
       if (!createRes.ok) throw new Error(task?.error ?? task?.message ?? `Fejl ${createRes.status}`)
+      let parseFailed = false
       try {
         const parseRes = await fetch(`/api/tasks/${task.id}/parse`, { method: 'POST' })
         if (!parseRes.ok) {
+          parseFailed = true
           const err = await parseRes.json().catch(() => ({}))
           console.warn('AI parse failed:', err)
         }
       } catch (e) {
+        parseFailed = true
         console.warn('AI parse error:', e)
       }
-      return task
+      return { task, parseFailed }
     },
-    onSuccess: (task) => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
-      qc.invalidateQueries({ queryKey: ['task', task.id] })
+      qc.invalidateQueries({ queryKey: ['task', data.task.id] })
     },
   })
 }
@@ -57,6 +60,7 @@ const STATUS_LABEL: Record<string, string> = {
 export default function InboxPage() {
   const [input, setInput] = useState('')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [parseMessage, setParseMessage] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { data: tasks = [], isLoading, isError, error, refetch } = useInboxTasks()
   const createTask = useCreateTask()
@@ -68,8 +72,12 @@ export default function InboxPage() {
   const handleSubmit = () => {
     const raw = input.trim()
     if (!raw || createTask.isPending) return
+    setParseMessage(null)
     createTask.mutate(raw, {
-      onSuccess: () => setInput(''),
+      onSuccess: (data) => {
+        setInput('')
+        if (data.parseFailed) setParseMessage('Opgave oprettet. AI kunne ikke udfylde felterne – tjek OPENAI_API_KEY eller prøv igen.')
+      },
     })
   }
 
@@ -103,6 +111,9 @@ export default function InboxPage() {
           <p className="mt-2 text-sm text-app-danger">
             Kunne ikke oprette opgave: {createTask.error?.message}
           </p>
+        )}
+        {parseMessage && (
+          <p className="mt-2 text-sm text-amber-400">{parseMessage}</p>
         )}
       </div>
 

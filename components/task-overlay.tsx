@@ -54,6 +54,21 @@ function useUpdateTask() {
   })
 }
 
+function useDeleteTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/tasks/${id}`, { method: 'DELETE' }).then((r) => {
+        if (!r.ok) throw new Error('Kunne ikke slette')
+        return r
+      }),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['task', id] })
+    },
+  })
+}
+
 interface TaskFormState {
   title: string
   notes: string
@@ -120,6 +135,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   const { data: customers = [] } = useCustomers(!!taskId)
   const { data: teamMembers = [] } = useTeamMembers(!!taskId)
   const updateTask = useUpdateTask()
+  const deleteTask = useDeleteTask()
   const [form, setForm] = useState<TaskFormState>(emptyForm)
   const [tagInput, setTagInput] = useState('')
   const backdropClickedRef = useRef(false)
@@ -175,6 +191,14 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
       status: 'qualified',
     }
     updateTask.mutate(payload, {
+      onSuccess: () => onClose(),
+    })
+  }
+
+  const handleDelete = () => {
+    if (!task) return
+    if (!confirm('Er du sikker på at du vil slette denne opgave?')) return
+    deleteTask.mutate(task.id, {
       onSuccess: () => onClose(),
     })
   }
@@ -374,7 +398,15 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 flex items-center justify-between gap-4">
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleteTask.isPending}
+                  className="text-app-danger hover:underline text-sm disabled:opacity-50"
+                >
+                  {deleteTask.isPending ? 'Sletter...' : 'Slet opgave'}
+                </button>
                 <button
                   type="button"
                   disabled={
