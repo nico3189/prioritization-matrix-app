@@ -23,18 +23,26 @@ export async function GET(req: Request) {
   const view = searchParams.get('view') // inbox | matrix | clarify
   const status = searchParams.get('status')
   const userId = session.user.id
-  const where: Record<string, unknown> = { userId }
-  if (status) where.status = status
-  if (view === 'clarify') {
-    where.status = { in: [TaskStatus.inbox_raw, TaskStatus.needs_clarification] }
+  try {
+    const where: Record<string, unknown> = { userId }
+    if (status) where.status = status
+    if (view === 'clarify') {
+      where.status = { in: [TaskStatus.inbox_raw, TaskStatus.needs_clarification] }
+    }
+    if (view === 'matrix') where.status = { in: [TaskStatus.qualified, TaskStatus.needs_clarification] }
+    const tasks = await prisma.task.findMany({
+      where,
+      include: { customer: true, delegatedTo: true },
+      orderBy: [{ createdAt: 'desc' }],
+    })
+    return NextResponse.json(tasks)
+  } catch (err) {
+    console.error('[GET /api/tasks]', err)
+    return NextResponse.json(
+      { error: 'Kunne ikke hente opgaver' },
+      { status: 500 }
+    )
   }
-  if (view === 'matrix') where.status = { in: [TaskStatus.qualified, TaskStatus.needs_clarification] }
-  const tasks = await prisma.task.findMany({
-    where,
-    include: { customer: true, delegatedTo: true },
-    orderBy: [{ createdAt: 'desc' }],
-  })
-  return NextResponse.json(tasks)
 }
 
 export async function POST(req: Request) {

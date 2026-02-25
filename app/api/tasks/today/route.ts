@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { TaskStatus } from '@prisma/client'
-import { getScoreWithDueBonus } from '@/lib/eisenhower'
+import { getScoreWithDueBonus, getEffectiveUrgency } from '@/lib/eisenhower'
 
 const NOW = new Date()
 const IN_48H = new Date(NOW.getTime() + 48 * 60 * 60 * 1000)
@@ -43,6 +43,20 @@ export async function GET() {
   const combined = [...dueSoon, ...q1, ...q2]
   const deduped = combined.filter((t, i, arr) => arr.findIndex((x) => x.id === t.id) === i)
   const top5 = deduped.slice(0, 5)
+  for (const item of top5) {
+    const t = item as typeof item & { _score?: number; _q?: string }
+    if (t.dueAt == null) continue
+    const baseUrg = t.urgency ?? 0
+    const effective = getEffectiveUrgency(baseUrg, t.dueAt)
+    const rounded = Math.round(effective)
+    if (rounded !== baseUrg && rounded >= 0 && rounded <= 100) {
+      await prisma.task.update({
+        where: { id: t.id },
+        data: { urgency: rounded },
+      })
+      t.urgency = rounded
+    }
+  }
   const tasks = top5.map((item) => {
     const { _score, _q, ...t } = item as typeof item & { _score?: number; _q?: string }
     return t

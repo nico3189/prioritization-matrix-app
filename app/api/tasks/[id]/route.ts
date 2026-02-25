@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { TaskStatus, DurationBucket, TaskType, LinkedEventType } from '@prisma/client'
 import { logTaskEvent } from '@/lib/events'
+import { getEffectiveUrgency } from '@/lib/eisenhower'
 
 const patchSchema = z.object({
   title: z.string().min(1).max(2000).optional(),
@@ -39,6 +40,19 @@ export async function GET(
     include: { customer: true, delegatedTo: true },
   })
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (task.dueAt != null) {
+    const baseUrg = task.urgency ?? 0
+    const effective = getEffectiveUrgency(baseUrg, task.dueAt)
+    const rounded = Math.round(effective)
+    if (rounded !== baseUrg && rounded >= 0 && rounded <= 100) {
+      const updated = await prisma.task.update({
+        where: { id: task.id },
+        data: { urgency: rounded },
+        include: { customer: true, delegatedTo: true },
+      })
+      return NextResponse.json(updated)
+    }
+  }
   return NextResponse.json(task)
 }
 

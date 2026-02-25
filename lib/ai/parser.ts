@@ -45,6 +45,9 @@ export interface ParserInput {
 
 const SYSTEM_PROMPT = `Du er en parsing- og prioriteringsassistent til en Eisenhower todo-app.
 Returnér STRICT JSON efter det definerede schema.
+
+Titel vs beskrivelse: Brugerens fulde indtastning (rawText) gemmes som BESKRIVELSE. "title" skal være ÉN kort, præcise handling – som en overskrift (maks 5-10 ord). Titlen må ikke gentage hele beskrivelsen; den skal være den konkrete handling (fx "Forbered noter til møde med Vardeengroslager" i stedet for den lange sætning med dato og varighed).
+
 Brug kundeliste/team-liste/calendar events som sandhedskilder.
 Delegation kun ved tydelig delegation-intent ("delegér til X", "bed X om", "send til X", "X skal …", "assign X"). "For Lukas" = Lukas i title/notes, ingen delegation.
 Ingen opfundne datoer; ved usikkerhed brug needsMoreInfo.
@@ -56,7 +59,11 @@ durationBucket SKAL være én af: LT15, M15_30, M30_60, GT60 (brug M30_60 for "c
 Returnér kun gyldig JSON, ingen markdown.`
 
 export async function parseSmartInput(input: ParserInput): Promise<ParserOutput> {
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey || apiKey.trim() === '') {
+    throw new Error('OPENAI_API_KEY er ikke sat. Tilføj den i Heroku Config Vars.')
+  }
+  const openai = new OpenAI({ apiKey })
   const eventsStr = input.calendarEvents.length
     ? JSON.stringify(input.calendarEvents.slice(0, 50))
     : '[]'
@@ -67,7 +74,7 @@ customerNames: ${JSON.stringify(input.customerNames)}
 teamMemberNames: ${JSON.stringify(input.teamMemberNames)}
 calendarEvents: ${eventsStr}
 
-Return strict JSON with: title, type, durationBucket (only: LT15 | M15_30 | M30_60 | GT60), customer, canDelegate, delegatedTo, linkedEventId, linkedEventType, dueAt (ISO), reviewAt (ISO), importance (0-100), urgency (0-100), quadrant (Q1-Q4), score, nextAction, needsMoreInfo, overallConfidence, suggestions, matches.`
+Return strict JSON with: title (kun kort præcis handling, 1 linje), type, durationBucket (only: LT15 | M15_30 | M30_60 | GT60), customer, canDelegate, delegatedTo, linkedEventId, linkedEventType, dueAt (ISO), reviewAt (ISO), importance (0-100), urgency (0-100), quadrant (Q1-Q4), score, nextAction, needsMoreInfo, overallConfidence, suggestions, matches.`
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',

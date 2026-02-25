@@ -1,13 +1,29 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { TaskOverlay } from '@/components/task-overlay'
+import { getQuadrant, getScore, getEffectiveUrgency } from '@/lib/eisenhower'
 
 function useMatrixTasks() {
   return useQuery({
     queryKey: ['tasks', 'matrix'],
     queryFn: () => fetch('/api/tasks?view=matrix').then((r) => r.json()),
+  })
+}
+
+function useSyncUrgency() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      fetch('/api/tasks/sync-urgency', { method: 'POST' }).then(async (r) => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data?.error ?? 'Kunne ikke opdatere')
+        return data as { ok: boolean; updated: number; total: number }
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+    },
   })
 }
 
@@ -20,26 +36,24 @@ const QUADRANTS = [
 
 export default function MatrixPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const { data: tasks = [], isLoading } = useMatrixTasks()
-  function getQuadrant(importance: number, urgency: number) {
-    if (importance >= 60 && urgency >= 60) return 'Q1'
-    if (importance >= 60 && urgency < 60) return 'Q2'
-    if (importance < 60 && urgency >= 60) return 'Q3'
-    return 'Q4'
-  }
+  const syncUrgency = useSyncUrgency()
   const byQuadrant = useMemo(() => {
-    const map: Record<string, typeof tasks> = { Q1: [], Q2: [], Q3: [], Q4: [] }
-    tasks.forEach((t: { importance?: number | null; urgency?: number | null; id: string }) => {
+    const map: Record<string, Array<{ importance?: number | null; urgency?: number | null; dueAt?: string | null; id: string; [k: string]: unknown }>> = { Q1: [], Q2: [], Q3: [], Q4: [] }
+    ;(tasks as Array<{ importance?: number | null; urgency?: number | null; dueAt?: string | null; id: string; [k: string]: unknown }>).forEach((t) => {
       const imp = t.importance ?? 0
-      const urg = t.urgency ?? 0
-      const q = getQuadrant(imp, urg)
+      const effectiveUrg = getEffectiveUrgency(t.urgency ?? 0, t.dueAt ?? null)
+      const q = getQuadrant(imp, effectiveUrg)
       map[q].push(t)
     })
     QUADRANTS.forEach((q) => {
-      map[q.id].sort((a: { importance?: number | null; urgency?: number | null }, b: { importance?: number | null; urgency?: number | null }) => {
-        const sa = 0.65 * (a.importance ?? 0) + 0.35 * (a.urgency ?? 0)
-        const sb = 0.65 * (b.importance ?? 0) + 0.35 * (b.urgency ?? 0)
-        return sb - sa
+      map[q.id].sort((a, b) => {
+        const impA = a.importance ?? 0
+        const impB = b.importance ?? 0
+        const urgA = getEffectiveUrgency(a.urgency ?? 0, a.dueAt ?? null)
+        const urgB = getEffectiveUrgency(b.urgency ?? 0, b.dueAt ?? null)
+        return getScore(impB, urgB) - getScore(impA, urgA)
       })
     })
     return map
@@ -47,8 +61,31 @@ export default function MatrixPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-semibold text-slate-100 mb-2">Matrix</h1>
-      <p className="text-xs text-app-muted mb-6">Eisenhower Q1–Q4. Klik for at redigere.</p>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-3xl font-semibold text-slate-100 mb-2">Matrix</h1>
+          <p className="text-xs text-app-muted">Eisenhower Q1–Q4. Klik for at redigere.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setSyncMessage(null)
+            syncUrgency.mutate(undefined, {
+              onSuccess: (data) => {
+                if (data.updated > 0) setSyncMessage(`Hastegrad opdateret for ${data.updated} opgave${data.updated !== 1 ? 'r' : ''}.`)
+                else setSyncMessage('Prioritering er ajour.')
+              },
+            })
+          }
+          disabled={syncUrgency.isPending}
+          className="text-sm text-app-muted hover:text-slate-200 transition disabled:opacity-50"
+        >
+          {syncUrgency.isPending ? 'Opdaterer...' : 'Opdater nu'}
+        </button>
+      </div>
+      {syncMessage && (
+        <p className="text-sm text-amber-400 mb-4">{syncMessage}</p>
+      )}
       {isLoading ? (
         <p className="text-sm text-app-muted">Henter...</p>
       ) : (
@@ -65,7 +102,11 @@ export default function MatrixPage() {
                   nextAction?: string | null
                   importance?: number | null
                   urgency?: number | null
-                }) => (
+                  dueAt?: string | null
+                }) => {
+                  const effUrg = getEffectiveUrgency(task.urgency ?? 0, task.dueAt ?? null)
+                  const score = getScore(task.importance ?? 0, effUrg)
+                  return (
                   <li key={task.id}>
                     <button
                       type="button"
@@ -81,11 +122,12 @@ export default function MatrixPage() {
                         <p className="text-sm text-slate-300 mt-1 line-clamp-1">{task.nextAction}</p>
                       )}
                       <p className="text-xs text-app-muted mt-1">
-                        Score: {(0.65 * (task.importance ?? 0) + 0.35 * (task.urgency ?? 0)).toFixed(0)}
+                        Score: {score.toFixed(0)} (deadline tæller med)
                       </p>
                     </button>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             </div>
           ))}

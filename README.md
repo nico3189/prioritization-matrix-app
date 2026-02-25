@@ -69,6 +69,18 @@ The Heroku MCP deploy failed with 401 (invalid credentials). Deploy manually:
 Ensure the Google OAuth redirect URI is set to:
 `https://prioritization-matrix-app.herokuapp.com/api/auth/callback/google`
 
+### Hourly sync of urgency (optional)
+
+Hastegrad for opgaver med deadline opdateres automatisk mod “effektiv” hastegrad. For at køre det hver time:
+
+1. Tilføj Heroku Scheduler: Dashboard → Resources → Add-ons → Heroku Scheduler.
+2. Sæt Config Var `CRON_SECRET` (fx `openssl rand -base64 32`).
+3. I Scheduler: New Job, kør **hver time**, kommando:
+   ```bash
+   curl -X POST https://<din-app>.herokuapp.com/api/cron/sync-urgency -H "x-cron-secret: $CRON_SECRET"
+   ```
+   Erstat `<din-app>` med din app-navn. Heroku indsætter Config Vars som `$CRON_SECRET` når jobbet kører.
+
 ## Scripts
 
 - `npm run dev` – development

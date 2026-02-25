@@ -41,9 +41,14 @@ export async function POST(
   try {
     result = await parseSmartInput(parserInput)
   } catch (err) {
+    const message = err instanceof Error ? err.message : 'Ukendt fejl'
     console.error('[parse] AI parse failed:', err)
     return NextResponse.json(
-      { error: 'AI kunne ikke kvalificere opgaven', code: 'PARSE_FAILED' },
+      {
+        error: 'AI kunne ikke kvalificere opgaven',
+        code: 'PARSE_FAILED',
+        detail: message,
+      },
       { status: 503 }
     )
   }
@@ -62,7 +67,7 @@ export async function POST(
     if (match) delegatedToId = match.id
   }
   const updateData: Record<string, unknown> = {
-    ...(result.title && { title: result.title }),
+    ...(result.title != null && result.title.trim() !== '' && { title: result.title.trim() }),
     ...(result.type !== undefined && { type: result.type }),
     ...(result.durationBucket != null && { durationBucket: result.durationBucket }),
     customerId: customerId ?? undefined,

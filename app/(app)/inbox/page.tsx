@@ -29,18 +29,21 @@ function useCreateTask() {
       const task = await createRes.json()
       if (!createRes.ok) throw new Error(task?.error ?? task?.message ?? `Fejl ${createRes.status}`)
       let parseFailed = false
+      let parseErrorDetail: string | null = null
       try {
         const parseRes = await fetch(`/api/tasks/${task.id}/parse`, { method: 'POST' })
         if (!parseRes.ok) {
           parseFailed = true
           const err = await parseRes.json().catch(() => ({}))
+          parseErrorDetail = (err as { detail?: string; error?: string }).detail ?? (err as { detail?: string; error?: string }).error ?? null
           console.warn('AI parse failed:', err)
         }
       } catch (e) {
         parseFailed = true
+        parseErrorDetail = e instanceof Error ? e.message : 'Netværksfejl'
         console.warn('AI parse error:', e)
       }
-      return { task, parseFailed }
+      return { task, parseFailed, parseErrorDetail }
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
@@ -76,7 +79,12 @@ export default function InboxPage() {
     createTask.mutate(raw, {
       onSuccess: (data) => {
         setInput('')
-        if (data.parseFailed) setParseMessage('Opgave oprettet. AI kunne ikke udfylde felterne – tjek OPENAI_API_KEY eller prøv igen.')
+        if (data.parseFailed) {
+          const msg = data.parseErrorDetail
+            ? `Opgave oprettet. AI: ${data.parseErrorDetail}`
+            : 'Opgave oprettet. AI kunne ikke udfylde felterne – tjek OPENAI_API_KEY eller prøv igen.'
+          setParseMessage(msg)
+        }
       },
     })
   }
