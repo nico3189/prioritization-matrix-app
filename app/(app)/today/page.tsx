@@ -36,7 +36,11 @@ export default function TodayPage() {
             <li key={task.id}>
               <button
                 type="button"
-                onClick={() => setSelectedTaskId(task.id)}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setSelectedTaskId(task.id)
+                }}
                 className="block w-full text-left bg-app-card rounded-xl2 p-5 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
               >
                 <p className="text-base font-medium text-slate-100">{task.title}</p>

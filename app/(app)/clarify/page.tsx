@@ -66,7 +66,11 @@ export default function ClarifyPage() {
             <button
               key={t.id}
               type="button"
-              onClick={() => setSelectedTaskId(t.id)}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setSelectedTaskId(t.id)
+              }}
               className="text-left bg-app-card rounded-xl2 p-5 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
             >
               <p className="text-base font-medium text-slate-100">{t.title}</p>
