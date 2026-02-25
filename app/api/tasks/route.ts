@@ -25,7 +25,9 @@ export async function GET(req: Request) {
   const userId = session.user.id
   const where: Record<string, unknown> = { userId }
   if (status) where.status = status
-  if (view === 'clarify') where.status = TaskStatus.needs_clarification
+  if (view === 'clarify') {
+    where.status = { in: [TaskStatus.inbox_raw, TaskStatus.needs_clarification] }
+  }
   if (view === 'matrix') where.status = { in: [TaskStatus.qualified, TaskStatus.needs_clarification] }
   const tasks = await prisma.task.findMany({
     where,
