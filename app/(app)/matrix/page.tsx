@@ -72,11 +72,14 @@ export default function MatrixPage() {
             setSyncMessage(null)
             syncUrgency.mutate(undefined, {
               onSuccess: (data) => {
-                if (data.updated > 0) setSyncMessage(`Hastegrad opdateret for ${data.updated} opgave${data.updated !== 1 ? 'r' : ''}.`)
-                else setSyncMessage('Prioritering er ajour.')
+                if (data.updated > 0) {
+                  setSyncMessage(`Hastegrad opdateret for ${data.updated} opgave${data.updated !== 1 ? 'r' : ''}.`)
+                } else {
+                  setSyncMessage('Prioritering er ajour.')
+                }
               },
             })
-          }
+          }}
           disabled={syncUrgency.isPending}
           className="text-sm text-app-muted hover:text-slate-200 transition disabled:opacity-50"
         >
@@ -96,30 +99,31 @@ export default function MatrixPage() {
                 {q.id}: {q.title}
               </h2>
               <ul className="space-y-3">
-                {byQuadrant[q.id].map((task: {
-                  id: string
-                  title: string
-                  nextAction?: string | null
-                  importance?: number | null
-                  urgency?: number | null
-                  dueAt?: string | null
-                }) => {
-                  const effUrg = getEffectiveUrgency(task.urgency ?? 0, task.dueAt ?? null)
-                  const score = getScore(task.importance ?? 0, effUrg)
+                {byQuadrant[q.id].map((task) => {
+                  const t = task as {
+                    id: string
+                    title: string
+                    nextAction?: string | null
+                    importance?: number | null
+                    urgency?: number | null
+                    dueAt?: string | null
+                  }
+                  const effUrg = getEffectiveUrgency(t.urgency ?? 0, t.dueAt ?? null)
+                  const score = getScore(t.importance ?? 0, effUrg)
                   return (
-                  <li key={task.id}>
+                  <li key={t.id}>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        setSelectedTaskId(task.id)
+                        setSelectedTaskId(t.id)
                       }}
                       className="block w-full text-left bg-app-card rounded-lg p-4 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
                     >
-                      <p className="text-base font-medium text-slate-100">{task.title}</p>
-                      {task.nextAction && (
-                        <p className="text-sm text-slate-300 mt-1 line-clamp-1">{task.nextAction}</p>
+                      <p className="text-base font-medium text-slate-100">{t.title}</p>
+                      {t.nextAction && (
+                        <p className="text-sm text-slate-300 mt-1 line-clamp-1">{t.nextAction}</p>
                       )}
                       <p className="text-xs text-app-muted mt-1">
                         Score: {score.toFixed(0)} (deadline tæller med)
