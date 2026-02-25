@@ -1,0 +1,20 @@
+---
+description: Deploy to Heroku after making changes to the app
+alwaysApply: true
+---
+
+# Heroku deployment
+
+After making any change to this project that affects the running app:
+
+1. **Commit** the changes (if not already committed).
+2. **Deploy** to Heroku:
+   ```bash
+   git push heroku main
+   ```
+3. **Run database migrations** if the change includes new or updated Prisma migrations:
+   ```bash
+   heroku run "npx prisma migrate deploy" --app prioritization-matrix-app
+   ```
+
+App: `prioritization-matrix-app`. Remote: `heroku` (git remote -v).

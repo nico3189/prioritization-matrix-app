@@ -20,6 +20,8 @@ const patchSchema = z.object({
   nextAction: z.string().max(500).optional().nullable(),
   dueAt: z.string().datetime().optional().nullable(),
   reviewAt: z.string().datetime().optional().nullable(),
+  url: z.string().max(2000).optional().nullable().or(z.literal('')),
+  tag: z.string().max(200).optional().nullable(),
   linkedEventId: z.string().optional().nullable(),
   linkedEventType: z.nativeEnum(LinkedEventType).optional().nullable(),
   eventStartAt: z.string().datetime().optional().nullable(),
@@ -57,6 +59,8 @@ export async function PATCH(
   const data = parsed.data as Record<string, unknown>
   if (data.dueAt !== undefined) data.dueAt = data.dueAt ? new Date(data.dueAt as string) : null
   if (data.reviewAt !== undefined) data.reviewAt = data.reviewAt ? new Date(data.reviewAt as string) : null
+  if (data.url !== undefined && data.url === '') data.url = null
+  if (data.tag !== undefined && data.tag === '') data.tag = null
   if (data.eventStartAt !== undefined) data.eventStartAt = data.eventStartAt ? new Date(data.eventStartAt as string) : null
   if (data.eventEndAt !== undefined) data.eventEndAt = data.eventEndAt ? new Date(data.eventEndAt as string) : null
   const prevImportance = task.importance
