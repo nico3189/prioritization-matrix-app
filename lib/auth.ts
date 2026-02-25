@@ -51,6 +51,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NEXTAUTH_DEBUG === 'true',
 }
 
 declare module 'next-auth' {
