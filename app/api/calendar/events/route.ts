@@ -21,12 +21,22 @@ export async function GET(req: Request) {
       timeMax,
       singleEvents: true,
       orderBy: 'startTime',
+      eventTypes: ['default'],
+      maxAttendees: 50,
     })
     const events = (res.data.items ?? []).map((e) => ({
       id: e.id,
       summary: e.summary ?? '',
       start: e.start?.dateTime ?? e.start?.date,
       end: e.end?.dateTime ?? e.end?.date,
+      htmlLink: e.htmlLink ?? null,
+      attendees: (e.attendees ?? []).map((a) => ({
+        email: a.email ?? null,
+        displayName: a.displayName ?? null,
+        organizer: a.organizer ?? false,
+        self: a.self ?? false,
+        responseStatus: a.responseStatus ?? null,
+      })),
     }))
     return NextResponse.json(events)
   } catch (err) {

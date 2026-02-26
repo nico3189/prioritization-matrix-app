@@ -29,7 +29,7 @@ function LoginForm() {
       <button
         type="button"
         onClick={() => signIn('google', { callbackUrl: '/inbox' })}
-        className="w-full bg-app-accent text-white px-4 py-3 rounded-lg text-sm font-medium shadow-md hover:opacity-90 active:scale-95 transition duration-200"
+        className="w-full bg-app-accent text-white px-4 py-3 rounded-lg text-sm font-medium shadow-md hover:opacity-90 active:scale-95 transition-colors duration-200 ease-out"
       >
         Log ind med Google
       </button>
@@ -39,8 +39,8 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-app-bg flex items-center justify-center p-8">
-      <div className="bg-app-card rounded-xl2 p-8 shadow-card border border-white/5 max-w-md w-full">
+    <div className="min-h-screen flex items-center justify-center p-8">
+      <div className="app-card-gradient rounded-xl2 p-8 shadow-card border border-white/5 max-w-md w-full">
         <Suspense fallback={<p className="text-sm text-app-muted">Henter...</p>}>
           <LoginForm />
         </Suspense>

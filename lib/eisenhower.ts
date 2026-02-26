@@ -1,49 +1,93 @@
+import type { TaskType } from '@prisma/client'
+
+/** Importance boost fra type (Kunde > Salg > Ledelse > Internt). */
+const TYPE_IMPORTANCE_BOOST: Record<TaskType, number> = {
+  kunde: 15,
+  salg: 10,
+  ledelse: 5,
+  internt: 0,
+}
+
+export function getImportanceBoostFromType(type: TaskType | null | undefined): number {
+  return type ? TYPE_IMPORTANCE_BOOST[type] ?? 0 : 0
+}
+
 /**
- * Eisenhower quadrant and score helpers.
- * Q1: importance >= 60 && urgency >= 60
- * Q2: importance >= 60 && urgency < 60
- * Q3: importance < 60 && urgency >= 60
- * Q4: importance < 60 && urgency < 60
- *
- * Priorities shift over time: effective urgency increases as deadline approaches.
+ * Matrix quadrant helpers.
+ * Q1: Opgaver der skal gøres nu – høj score + under 30 min, eller score >= 75
+ * Q2: Opgaver der skal forberedes – middelhøj score eller over 30 min
+ * Q3: Opgaver der skal delegeres – har tildelt teammedlem
+ * Q4: Opgaver der skal droppes eller genvurderes – lav score
  */
 export type Quadrant = 'Q1' | 'Q2' | 'Q3' | 'Q4'
 
-export function getQuadrant(importance: number, urgency: number): Quadrant {
-  if (importance >= 60 && urgency >= 60) return 'Q1'
-  if (importance >= 60 && urgency < 60) return 'Q2'
-  if (importance < 60 && urgency >= 60) return 'Q3'
+export interface MatrixTaskInput {
+  importance?: number | null
+  urgency?: number | null
+  dueAt?: string | Date | null
+  durationBucket?: string | null
+  delegatedToId?: string | null
+  delegatedTo?: { name?: string } | null
+}
+
+export function getMatrixQuadrant(task: MatrixTaskInput): Quadrant {
+  const imp = task.importance ?? 0
+  const urg = task.urgency ?? 0
+  const score = getScore(imp, urg)
+  const hasDelegation = !!(task.delegatedToId || task.delegatedTo)
+  const bucket = task.durationBucket ?? ''
+  const isUnder30Min = bucket === 'LT15' || bucket === 'M15_30'
+  const isOver30Min = bucket === 'M30_60' || bucket === 'GT60'
+
+  const qualifiesForQ1 = score >= 75 || (score >= 60 && isUnder30Min)
+  if (qualifiesForQ1) return 'Q1'
+  if (hasDelegation) return 'Q3'
+  if (score >= 50 || isOver30Min) return 'Q2'
   return 'Q4'
 }
 
+/** @deprecated Brug getMatrixQuadrant(task) i stedet */
+export function getQuadrant(importance: number, urgency: number): Quadrant {
+  return getMatrixQuadrant({ importance, urgency })
+}
+
 export function getScore(importance: number, urgency: number): number {
-  return 0.65 * importance + 0.35 * urgency
+  return 0.55 * importance + 0.45 * urgency
 }
 
 /**
- * Effective urgency: base urgency plus boost as deadline approaches.
- * So "what I should do now" stays current without re-running AI.
+ * Beregner hastegrad ud fra nærhed til deadline (0–100).
+ * Forskellige værdier pr. dag op til en uge, derefter intervaller.
+ */
+export function computeUrgencyFromDeadline(dueAt: Date | string): number {
+  const due = typeof dueAt === 'string' ? new Date(dueAt) : dueAt
+  const hoursUntilDue = (due.getTime() - Date.now()) / (1000 * 60 * 60)
+  if (hoursUntilDue < 0) return 100
+  if (hoursUntilDue < 24) return 95   // dag 0
+  if (hoursUntilDue < 48) return 90   // dag 1
+  if (hoursUntilDue < 72) return 85   // dag 2
+  if (hoursUntilDue < 96) return 80   // dag 3
+  if (hoursUntilDue < 120) return 75  // dag 4
+  if (hoursUntilDue < 144) return 70  // dag 5
+  if (hoursUntilDue < 168) return 65  // dag 6
+  if (hoursUntilDue < 14 * 24) return 55  // 1–2 uger
+  return 35  // > 2 uger
+}
+
+/**
+ * Returnerer hastegrad (stored value). Sync skriver computeUrgencyFromDeadline til DB.
  */
 export function getEffectiveUrgency(
   baseUrgency: number,
-  dueAt: Date | string | null
+  _dueAt: Date | string | null
 ): number {
-  if (!dueAt) return baseUrgency
-  const due = typeof dueAt === 'string' ? new Date(dueAt) : dueAt
-  const hoursUntilDue = (due.getTime() - Date.now()) / (1000 * 60 * 60)
-  if (hoursUntilDue < 0) return Math.max(baseUrgency, 95)
-  if (hoursUntilDue < 24) return Math.min(100, baseUrgency + 25)
-  if (hoursUntilDue < 48) return Math.min(100, baseUrgency + 20)
-  if (hoursUntilDue < 7 * 24) return Math.min(100, baseUrgency + 15)
-  if (hoursUntilDue < 14 * 24) return Math.min(100, baseUrgency + 10)
   return baseUrgency
 }
 
 export function getScoreWithDueBonus(
   importance: number,
   urgency: number,
-  dueAt: Date | null
+  _dueAt: Date | null
 ): number {
-  const effectiveUrg = getEffectiveUrgency(urgency, dueAt)
-  return getScore(importance, effectiveUrg)
+  return getScore(importance, urgency)
 }

@@ -23,7 +23,7 @@ module.exports = {
         hover: '0 14px 40px rgba(0,0,0,0.45)',
       },
       borderRadius: {
-        xl2: '18px',
+        xl2: '8px',
       },
     },
   },

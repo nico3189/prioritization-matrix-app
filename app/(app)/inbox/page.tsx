@@ -4,6 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { TaskOverlay } from '@/components/task-overlay'
+import { TaskCard } from '@/components/task-card'
+import { useMarkTaskDone } from '@/lib/use-mark-task-done'
+import { useToast } from '@/components/toast'
 
 function useInboxTasks() {
   return useQuery({
@@ -63,10 +66,18 @@ const STATUS_LABEL: Record<string, string> = {
 export default function InboxPage() {
   const [input, setInput] = useState('')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [completingId, setCompletingId] = useState<string | null>(null)
   const [parseMessage, setParseMessage] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const showToast = useToast()
   const { data: tasks = [], isLoading, isError, error, refetch } = useInboxTasks()
   const createTask = useCreateTask()
+  const markDone = useMarkTaskDone({
+    onSuccess: () => {
+      showToast('Opgave udført!')
+      setTimeout(() => setCompletingId(null), 600)
+    },
+  })
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -91,8 +102,7 @@ export default function InboxPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-semibold text-slate-100 mb-2">Inbox</h1>
-      <p className="text-xs text-app-muted mb-6">Lynhurtig capture. ⌘+Enter (Mac) / Ctrl+Enter (PC) = opret opgave.</p>
+      <h1 className="text-3xl font-semibold text-slate-100 mb-6">Alle inputs</h1>
 
       <div className="mb-6">
         <textarea
@@ -107,7 +117,7 @@ export default function InboxPage() {
           }}
           placeholder="Skriv eller indsæt en opgave (⌘+Enter / Ctrl+Enter = opret)"
           rows={2}
-          className="w-full bg-slate-900/60 border border-white/5 rounded-lg px-4 py-3 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40 resize-none"
+          className="w-full app-input-gradient border border-white/5 rounded-lg px-4 py-3 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40 resize-none"
           disabled={createTask.isPending}
         />
         <p className="text-xs text-app-muted mt-1">
@@ -134,55 +144,54 @@ export default function InboxPage() {
           <button
             type="button"
             onClick={() => refetch()}
-            className="mt-3 text-app-accent hover:underline"
+            className="mt-3 text-app-accent hover:underline transition-colors duration-200"
           >
             Prøv igen
           </button>
         </div>
       ) : (
-        <ul className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {tasks.map((task: {
             id: string
             title: string
             status: string
             createdAt: string
             nextAction?: string | null
-          }) => (
-            <li key={task.id}>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setSelectedTaskId(task.id)
+            notes?: string | null
+            type?: string | null
+            customer?: { name: string } | null
+            delegatedTo?: { name: string } | null
+            importance?: number | null
+            urgency?: number | null
+            dueAt?: string | null
+            durationBucket?: string | null
+            tag?: string | null
+            }) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                onClick={() => setSelectedTaskId(task.id)}
+                onMarkDone={() => {
+                  setCompletingId(task.id)
+                  markDone.mutate(task.id)
                 }}
-                className="block w-full text-left bg-app-card rounded-xl2 p-5 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-base font-medium text-slate-100">{task.title}</p>
-                    {task.nextAction && (
-                      <p className="text-sm text-slate-300 mt-1">{task.nextAction}</p>
-                    )}
-                  </div>
-                  <span
-                    className={cn(
-                      'shrink-0 text-xs px-2 py-1 rounded',
-                      task.status === 'inbox_raw' && 'bg-app-muted/20 text-app-muted',
-                      task.status === 'needs_clarification' && 'bg-amber-500/20 text-amber-400',
-                      task.status === 'qualified' && 'bg-app-success/20 text-app-success'
-                    )}
-                  >
-                    {STATUS_LABEL[task.status] ?? task.status}
-                  </span>
-                </div>
-                <p className="text-xs text-app-muted mt-2">
-                  {new Date(task.createdAt).toLocaleDateString('da-DK')}
-                </p>
-              </button>
-            </li>
+                isCompleting={completingId === task.id}
+                badge={
+                  task.status !== 'qualified' ? (
+                    <span
+                      className={cn(
+                        'text-xs px-2 py-1 rounded',
+                        task.status === 'inbox_raw' && 'bg-app-muted/20 text-app-muted',
+                        task.status === 'needs_clarification' && 'bg-amber-500/20 text-amber-400'
+                      )}
+                    >
+                      {STATUS_LABEL[task.status] ?? task.status}
+                    </span>
+                  ) : undefined
+                }
+              />
           ))}
-        </ul>
+        </div>
       )}
 
       <TaskOverlay

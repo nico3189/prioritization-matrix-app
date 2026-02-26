@@ -4,6 +4,7 @@
 
 :root {
   --app-bg: #0B1120;
+  --app-bg-darker: #050a12;
   --app-surface: #0F172A;
   --app-card: #111827;
   --app-muted: #94A3B8;
@@ -13,6 +14,184 @@
 }
 
 body {
-  @apply bg-app-bg text-slate-200 antialiased leading-relaxed;
+  @apply text-slate-200 antialiased leading-relaxed;
   font-feature-settings: "rlig" 1, "calt" 1;
+  background-color: var(--app-bg-darker);
+  background-image:
+    linear-gradient(110deg, transparent 0%, rgba(15, 23, 42, 0.12) 30%, transparent 60%, rgba(17, 24, 39, 0.08) 85%, transparent 100%),
+    radial-gradient(ellipse 100% 70% at 50% 0%, rgba(15, 23, 42, 0.55) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 80% at 100% 100%, rgba(17, 24, 39, 0.4) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 60% at 0% 80%, rgba(15, 23, 42, 0.3) 0%, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Gradient surfaces – samme stil som body, til cards/sidebar/dropdowns. Blå undertone bevaret. */
+.app-card-gradient {
+  background-color: #0e1522;
+  background-image:
+    radial-gradient(ellipse 100% 80% at 50% 0%, rgba(30, 41, 59, 0.35) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(15, 23, 42, 0.6) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(30, 41, 59, 0.2) 0%, transparent 50%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 40%);
+}
+
+.app-surface-gradient {
+  background-color: #0c1220;
+  background-image:
+    radial-gradient(ellipse 90% 60% at 50% 0%, rgba(15, 23, 42, 0.5) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 0% 100%, rgba(30, 41, 59, 0.2) 0%, transparent 50%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015) 0%, transparent 45%);
+}
+
+.app-dropdown-gradient {
+  background-color: #0e1522;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(15, 23, 42, 0.5) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 50%);
+}
+
+.app-input-gradient {
+  background-color: #0d1320;
+  background-image:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.15) 0%, transparent 100%);
+}
+
+/* Hide native calendar icon on datetime inputs */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  cursor: pointer;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  left: 0;
+}
+
+/* Custom dropdown scrollbar */
+[data-app-select-list]::-webkit-scrollbar {
+  width: 6px;
+}
+[data-app-select-list]::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-app-select-list]::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes completionOverlay {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes checkmarkPop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes menuOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes menuOverlayOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes menuDrawerIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes menuDrawerOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes modalOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalContentIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modalOverlayOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modalContentOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

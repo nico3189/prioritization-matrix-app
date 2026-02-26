@@ -57,25 +57,30 @@ model VerificationToken {
 }
 
 model Customer {
-  id     String @id @default(cuid())
-  userId String
-  name   String
+  id       String  @id @default(cuid())
+  userId   String
+  name     String
+  code     String? @db.VarChar(3)
+  priority Int     @default(5) // 0-10, bruges til importance/urgency når ingen deadline
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tasks Task[]
 
   @@index([userId])
+  @@unique([userId, code])
 }
 
 model TeamMember {
-  id     String @id @default(cuid())
+  id     String  @id @default(cuid())
   userId String
   name   String
+  code   String? @db.VarChar(3)
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tasks Task[]
 
   @@index([userId])
+  @@unique([userId, code])
 }
 
 enum TaskStatus {
@@ -97,7 +102,7 @@ enum TaskType {
   kunde
   internt
   salg
-  privat
+  ledelse
 }
 
 enum LinkedEventType {
@@ -126,15 +131,16 @@ model Task {
   nextAction   String?     @db.Text
 
   dueAt        DateTime?
-  reviewAt     DateTime?
 
   url          String?     @db.Text
   tag          String?
 
-  linkedEventId   String?
-  linkedEventType LinkedEventType?
-  eventStartAt    DateTime?
-  eventEndAt      DateTime?
+  linkedEventId    String?
+  linkedEventType  LinkedEventType?
+  linkedEventTitle String?       @db.Text
+  linkedEventUrl   String?       @db.Text
+  eventStartAt     DateTime?
+  eventEndAt       DateTime?
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -143,7 +149,6 @@ model Task {
 
   @@index([userId])
   @@index([userId, status])
-  @@index([userId, reviewAt])
   @@index([userId, dueAt])
 }
 

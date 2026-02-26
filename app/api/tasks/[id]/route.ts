@@ -5,7 +5,6 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { TaskStatus, DurationBucket, TaskType, LinkedEventType } from '@prisma/client'
 import { logTaskEvent } from '@/lib/events'
-import { getEffectiveUrgency } from '@/lib/eisenhower'
 
 const patchSchema = z.object({
   title: z.string().min(1).max(2000).optional(),
@@ -20,7 +19,6 @@ const patchSchema = z.object({
   urgency: z.number().min(0).max(100).optional(),
   nextAction: z.string().max(500).optional().nullable(),
   dueAt: z.string().datetime().optional().nullable(),
-  reviewAt: z.string().datetime().optional().nullable(),
   url: z.string().max(2000).optional().nullable().or(z.literal('')),
   tag: z.string().max(200).optional().nullable(),
   linkedEventId: z.string().optional().nullable(),
@@ -40,19 +38,6 @@ export async function GET(
     include: { customer: true, delegatedTo: true },
   })
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (task.dueAt != null) {
-    const baseUrg = task.urgency ?? 0
-    const effective = getEffectiveUrgency(baseUrg, task.dueAt)
-    const rounded = Math.round(effective)
-    if (rounded !== baseUrg && rounded >= 0 && rounded <= 100) {
-      const updated = await prisma.task.update({
-        where: { id: task.id },
-        data: { urgency: rounded },
-        include: { customer: true, delegatedTo: true },
-      })
-      return NextResponse.json(updated)
-    }
-  }
   return NextResponse.json(task)
 }
 
@@ -72,7 +57,6 @@ export async function PATCH(
   if (!parsed.success) return NextResponse.json(parsed.error.flatten(), { status: 400 })
   const data = parsed.data as Record<string, unknown>
   if (data.dueAt !== undefined) data.dueAt = data.dueAt ? new Date(data.dueAt as string) : null
-  if (data.reviewAt !== undefined) data.reviewAt = data.reviewAt ? new Date(data.reviewAt as string) : null
   if (data.url !== undefined && data.url === '') data.url = null
   if (data.tag !== undefined && data.tag === '') data.tag = null
   if (data.eventStartAt !== undefined) data.eventStartAt = data.eventStartAt ? new Date(data.eventStartAt as string) : null

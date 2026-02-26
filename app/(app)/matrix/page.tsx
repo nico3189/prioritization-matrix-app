@@ -1,9 +1,12 @@
 'use client'
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { TaskOverlay } from '@/components/task-overlay'
-import { getQuadrant, getScore, getEffectiveUrgency } from '@/lib/eisenhower'
+import { TaskCard, type TaskCardTask } from '@/components/task-card'
+import { getMatrixQuadrant, getScore, getEffectiveUrgency } from '@/lib/eisenhower'
+import { useMarkTaskDone } from '@/lib/use-mark-task-done'
+import { useToast } from '@/components/toast'
 
 function useMatrixTasks() {
   return useQuery({
@@ -12,39 +15,28 @@ function useMatrixTasks() {
   })
 }
 
-function useSyncUrgency() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () =>
-      fetch('/api/tasks/sync-urgency', { method: 'POST' }).then(async (r) => {
-        const data = await r.json()
-        if (!r.ok) throw new Error(data?.error ?? 'Kunne ikke opdatere')
-        return data as { ok: boolean; updated: number; total: number }
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] })
-    },
-  })
-}
-
 const QUADRANTS = [
-  { id: 'Q1', title: 'Do now', importance: 60, urgency: 60 },
-  { id: 'Q2', title: 'Schedule', importance: 60, urgency: 40 },
-  { id: 'Q3', title: 'Delegate/Limit', importance: 40, urgency: 60 },
-  { id: 'Q4', title: 'Drop/Backlog', importance: 40, urgency: 40 },
+  { id: 'Q1', title: 'Opgaver der skal gøres nu' },
+  { id: 'Q2', title: 'Opgaver der skal forberedes' },
+  { id: 'Q3', title: 'Opgaver der skal delegeres' },
+  { id: 'Q4', title: 'Opgaver der skal droppes eller genvurderes' },
 ] as const
 
 export default function MatrixPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
-  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [completingId, setCompletingId] = useState<string | null>(null)
+  const showToast = useToast()
   const { data: tasks = [], isLoading } = useMatrixTasks()
-  const syncUrgency = useSyncUrgency()
+  const markDone = useMarkTaskDone({
+    onSuccess: () => {
+      showToast('Opgave udført!')
+      setTimeout(() => setCompletingId(null), 600)
+    },
+  })
   const byQuadrant = useMemo(() => {
     const map: Record<string, Array<{ importance?: number | null; urgency?: number | null; dueAt?: string | null; id: string; [k: string]: unknown }>> = { Q1: [], Q2: [], Q3: [], Q4: [] }
-    ;(tasks as Array<{ importance?: number | null; urgency?: number | null; dueAt?: string | null; id: string; [k: string]: unknown }>).forEach((t) => {
-      const imp = t.importance ?? 0
-      const effectiveUrg = getEffectiveUrgency(t.urgency ?? 0, t.dueAt ?? null)
-      const q = getQuadrant(imp, effectiveUrg)
+    ;(tasks as Array<{ importance?: number | null; urgency?: number | null; dueAt?: string | null; durationBucket?: string | null; delegatedToId?: string | null; delegatedTo?: { name?: string } | null; id: string; [k: string]: unknown }>).forEach((t) => {
+      const q = getMatrixQuadrant(t)
       map[q].push(t)
     })
     QUADRANTS.forEach((q) => {
@@ -61,75 +53,32 @@ export default function MatrixPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl font-semibold text-slate-100 mb-2">Matrix</h1>
-          <p className="text-xs text-app-muted">Eisenhower Q1–Q4. Klik for at redigere.</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setSyncMessage(null)
-            syncUrgency.mutate(undefined, {
-              onSuccess: (data) => {
-                if (data.updated > 0) {
-                  setSyncMessage(`Hastegrad opdateret for ${data.updated} opgave${data.updated !== 1 ? 'r' : ''}.`)
-                } else {
-                  setSyncMessage('Prioritering er ajour.')
-                }
-              },
-            })
-          }}
-          disabled={syncUrgency.isPending}
-          className="text-sm text-app-muted hover:text-slate-200 transition disabled:opacity-50"
-        >
-          {syncUrgency.isPending ? 'Opdaterer...' : 'Opdater nu'}
-        </button>
-      </div>
-      {syncMessage && (
-        <p className="text-sm text-amber-400 mb-4">{syncMessage}</p>
-      )}
+      <h1 className="text-3xl font-semibold text-slate-100 mb-2">Matrix</h1>
+      <p className="text-xs text-app-muted mb-6">Matrix Q1–Q4. Klik for at redigere.</p>
       {isLoading ? (
         <p className="text-sm text-app-muted">Henter...</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {QUADRANTS.map((q) => (
-            <div key={q.id} className="bg-app-surface rounded-xl2 p-4 border border-white/5">
+            <div key={q.id} className="app-surface-gradient rounded-xl2 p-4 border border-white/5">
               <h2 className="text-lg font-medium text-slate-200 mb-4">
                 {q.id}: {q.title}
               </h2>
               <ul className="space-y-3">
                 {byQuadrant[q.id].map((task) => {
-                  const t = task as {
-                    id: string
-                    title: string
-                    nextAction?: string | null
-                    importance?: number | null
-                    urgency?: number | null
-                    dueAt?: string | null
-                  }
-                  const effUrg = getEffectiveUrgency(t.urgency ?? 0, t.dueAt ?? null)
-                  const score = getScore(t.importance ?? 0, effUrg)
+                  const t = task as unknown as TaskCardTask
                   return (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setSelectedTaskId(t.id)
-                      }}
-                      className="block w-full text-left bg-app-card rounded-lg p-4 shadow-card border border-white/5 transition-all duration-200 hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10"
-                    >
-                      <p className="text-base font-medium text-slate-100">{t.title}</p>
-                      {t.nextAction && (
-                        <p className="text-sm text-slate-300 mt-1 line-clamp-1">{t.nextAction}</p>
-                      )}
-                      <p className="text-xs text-app-muted mt-1">
-                        Score: {score.toFixed(0)} (deadline tæller med)
-                      </p>
-                    </button>
-                  </li>
+                    <li key={t.id}>
+                      <TaskCard
+                        task={t}
+                        onClick={() => setSelectedTaskId(t.id)}
+                        onMarkDone={() => {
+                          setCompletingId(t.id)
+                          markDone.mutate(t.id)
+                        }}
+                        isCompleting={completingId === t.id}
+                      />
+                    </li>
                   )
                 })}
               </ul>

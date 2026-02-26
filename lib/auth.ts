@@ -17,6 +17,7 @@ export const authOptions: NextAuthOptions = {
             'profile',
             'https://www.googleapis.com/auth/calendar.readonly',
           ].join(' '),
+          access_type: 'offline',
         },
       },
     }),
@@ -25,8 +26,42 @@ export const authOptions: NextAuthOptions = {
   pages: { signIn: '/login' },
   callbacks: {
     async jwt({ token, account, user, profile }) {
-      if (account?.access_token) token.accessToken = account.access_token
+      if (account?.access_token) {
+        token.accessToken = account.access_token
+        token.refreshToken = account.refresh_token ?? token.refreshToken
+        token.expiresAt = account.expires_at
+          ? account.expires_at * 1000
+          : Date.now() + 55 * 60 * 1000
+      }
       if (account?.refresh_token) token.refreshToken = account.refresh_token
+      const expiresAt = token.expiresAt as number | undefined
+      if (
+        token.refreshToken &&
+        (!token.accessToken || (expiresAt && Date.now() >= expiresAt - 60 * 1000))
+      ) {
+        try {
+          const res = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: process.env.GOOGLE_CLIENT_ID!,
+              client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+              grant_type: 'refresh_token',
+              refresh_token: token.refreshToken,
+            }),
+          })
+          const data = (await res.json()) as {
+            access_token?: string
+            expires_in?: number
+          }
+          if (data.access_token) {
+            token.accessToken = data.access_token
+            token.expiresAt = Date.now() + (data.expires_in ?? 3600) * 1000
+          }
+        } catch (err) {
+          console.error('[auth] Token refresh failed:', err)
+        }
+      }
       if (user?.email) {
         const dbUser = await prisma.user.findUnique({
           where: { email: user.email },
@@ -67,5 +102,6 @@ declare module 'next-auth/jwt' {
     userId?: string
     accessToken?: string
     refreshToken?: string
+    expiresAt?: number
   }
 }
