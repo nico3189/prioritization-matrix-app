@@ -26,6 +26,12 @@ export default function TodayPage() {
   const [sortBy, setSortBy] = useState<SortOption>('priority')
   const [searchQuery, setSearchQuery] = useState('')
   const showToast = useToast()
+  const markDone = useMarkTaskDone({
+    onSuccess: () => {
+      showToast('Opgave udført!')
+      setTimeout(() => setCompletingId(null), 600)
+    },
+  })
   const { data: tasks = [], isLoading } = useTodayTasks()
   const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, searchQuery)
   const displayTasks = useMemo(() => filteredTasks.slice(0, 4), [filteredTasks])

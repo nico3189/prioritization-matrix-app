@@ -145,17 +145,17 @@ function IconScore() {
 
 export interface TaskCardTask {
   id: string
-  title: string
+  title?: string | null
   notes?: string | null
   type?: string | null
-  customer?: { name: string } | null
-  delegatedTo?: { name: string } | null
+  customer?: { name?: string; code?: string } | null
+  delegatedTo?: { name?: string; code?: string } | null
   importance?: number | null
   urgency?: number | null
   dueAt?: string | Date | null
   durationBucket?: string | null
   tag?: string | null
-  taskTags?: Array<{ tag: { id: string; name: string; color: string } }>
+  taskTags?: Array<{ tag?: { id?: string; name?: string; color?: string } | null }> | null
   status?: string | null
   nextAction?: string | null
 }
@@ -188,7 +188,9 @@ export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLev
   const score = Math.round(getScore(imp, urg))
   const tags =
     task.taskTags && task.taskTags.length > 0
-      ? task.taskTags.map((tt) => ({ name: tt.tag.name, color: tt.tag.color }))
+      ? task.taskTags
+          .map((tt) => ({ name: tt.tag?.name ?? '', color: tt.tag?.color ?? '#94A3B8' }))
+          .filter((t) => t.name)
       : (task.tag?.split(',').map((t) => t.trim()).filter(Boolean) ?? []).map((name, i) => ({
           name,
           color: ['#8B5CF6', '#10B981', '#F59E0B', '#0EA5E9', '#EC4899'][i % 5],
@@ -263,7 +265,7 @@ export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLev
         )}
       </div>
       <div className="mt-3">
-        <p className="text-base font-medium text-slate-100 leading-tight">{task.title}</p>
+        <p className="text-base font-medium text-slate-100 leading-tight">{task.title ?? '(Uden titel)'}</p>
         {desc && (
           <p className="text-xs text-slate-400 mt-2 line-clamp-2">{desc}</p>
         )}
