@@ -12,6 +12,25 @@ import { da } from 'date-fns/locale'
 
 const TZ = 'Europe/Copenhagen'
 
+const TAG_COLORS = ['#8B5CF6', '#10B981', '#F59E0B', '#0EA5E9', '#EC4899']
+
+async function findOrCreateTag(
+  userId: string,
+  name: string
+): Promise<string> {
+  const trimmed = name.trim()
+  if (!trimmed) throw new Error('Empty tag name')
+  const existing = await prisma.tag.findFirst({
+    where: { userId, name: { equals: trimmed, mode: 'insensitive' } },
+  })
+  if (existing) return existing.id
+  const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)]
+  const tag = await prisma.tag.create({
+    data: { userId, name: trimmed, color },
+  })
+  return tag.id
+}
+
 /** Når AI returnerer midnight (00:00-01:00), normaliser til 08:00 i brugerens timezone. */
 function normalizeDueAt(iso: string | null | undefined): Date | null {
   if (!iso) return null
@@ -96,6 +115,7 @@ export async function POST(
     include: { customer: true, delegatedTo: true },
   })
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  await prisma.task.update({ where: { id }, data: { parseStatus: 'parsing' } })
   const customers = await prisma.customer.findMany({
     where: { userId: session.user.id },
     select: { id: true, name: true, code: true, priority: true },
@@ -104,6 +124,44 @@ export async function POST(
     where: { userId: session.user.id },
     select: { id: true, name: true, code: true },
   })
+  const tags = await prisma.tag.findMany({
+    where: { userId: session.user.id },
+    select: { name: true, isBlacklisted: true },
+  })
+  const tagNames = tags.filter((t) => !t.isBlacklisted).map((t) => t.name)
+  const blacklistedTagNames = tags.filter((t) => t.isBlacklisted).map((t) => t.name)
+  const userSettings = await prisma.userSettings.findUnique({
+    where: { userId: session.user.id },
+  })
+  const workHours = (userSettings?.workHours as Record<string, { start: string; end: string } | null> | null) ?? {
+    mon: { start: '08:00', end: '16:00' },
+    tue: { start: '08:00', end: '16:00' },
+    wed: { start: '08:00', end: '16:00' },
+    thu: { start: '08:00', end: '16:00' },
+    fri: { start: '08:00', end: '16:00' },
+    sat: { start: '08:00', end: '16:00' },
+    sun: { start: '08:00', end: '16:00' },
+  }
+  const overrideEvents = await prisma.taskEvent.findMany({
+    where: { userId: session.user.id, eventType: 'overridden' },
+    orderBy: { createdAt: 'desc' },
+    take: 12,
+    include: { task: { select: { title: true, notes: true } } },
+  })
+  const overrideExamples = overrideEvents
+    .map((e) => {
+      const payload = e.payload as { rawText?: string; prev?: Record<string, unknown>; next?: Record<string, unknown> } | null
+      if (!payload?.prev || !payload?.next) return null
+      const raw = payload.rawText ?? [e.task?.title, e.task?.notes].filter(Boolean).join('\n')
+      const changes = Object.keys(payload.next)
+        .filter((k) => JSON.stringify(payload.prev?.[k]) !== JSON.stringify(payload.next?.[k]))
+        .map((k) => `${k}: ${JSON.stringify(payload.prev?.[k])} → ${JSON.stringify(payload.next?.[k])}`)
+        .join(', ')
+      if (!changes) return null
+      return `- Input: "${raw.slice(0, 120)}${raw.length > 120 ? '…' : ''}" → ${changes}`
+    })
+    .filter(Boolean)
+    .join('\n')
   const now = toZonedTime(new Date(), 'Europe/Copenhagen')
   const rawText = [task.title, task.notes].filter(Boolean).join('\n')
   const todayFormatted = format(now, "EEEE d. MMMM yyyy", { locale: da })
@@ -119,12 +177,16 @@ export async function POST(
       t.code ? `${t.name} (${t.code})` : t.name
     ),
     calendarEvents: [],
+    ...(tagNames.length > 0 && { tagNames }),
+    ...(blacklistedTagNames.length > 0 && { blacklistedTagNames }),
+    ...(overrideExamples && { overrideExamples }),
     ...(task.linkedEventId && {
       linkedEvent: {
         title: task.linkedEventTitle ?? undefined,
         url: task.linkedEventUrl ?? undefined,
       },
     }),
+    workHours,
   }
   let result: Awaited<ReturnType<typeof parseSmartInput>>
   try {
@@ -132,6 +194,7 @@ export async function POST(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Ukendt fejl'
     console.error('[parse] AI parse failed:', err)
+    await prisma.task.update({ where: { id }, data: { parseStatus: 'failed' } })
     return NextResponse.json(
       {
         error: 'AI kunne ikke kvalificere opgaven',
@@ -226,8 +289,7 @@ export async function POST(
     importance,
     urgency,
     ...(result.nextAction !== undefined && { nextAction: result.nextAction }),
-    ...(result.tags &&
-      result.tags.length > 0 && {
+    ...(result.tags && result.tags.length > 0 && {
         tag: result.tags.slice(0, 4).join(', '),
       }),
     ...(extractedUrl && { url: extractedUrl }),
@@ -236,10 +298,35 @@ export async function POST(
   const newStatus = hasDuration ? TaskStatus.qualified : TaskStatus.needs_clarification
   const updated = await prisma.task.update({
     where: { id },
-    data: { ...updateData, status: newStatus },
-    include: { customer: true, delegatedTo: true },
+    data: { ...updateData, status: newStatus, parseStatus: 'parsed' },
+    include: { customer: true, delegatedTo: true, taskTags: { include: { tag: true } } },
   })
+  if (result.tags && result.tags.length > 0) {
+    const tagNames = result.tags.slice(0, 4).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    const tagIds: string[] = []
+    for (const name of tagNames) {
+      try {
+        const tagId = await findOrCreateTag(session.user.id, name)
+        tagIds.push(tagId)
+      } catch {
+        // skip invalid tag names
+      }
+    }
+    if (tagIds.length > 0) {
+      await prisma.taskTag.deleteMany({ where: { taskId: id } })
+      await prisma.taskTag.createMany({
+        data: tagIds.map((tagId) => ({ taskId: id, tagId })),
+      })
+    }
+  }
   await logTaskEvent(id, session.user.id, 'parsed')
   await logTaskEvent(id, session.user.id, 'ai_scored', { result: Object.keys(result) })
-  return NextResponse.json(updated)
+  const final =
+    result.tags && result.tags.length > 0
+      ? await prisma.task.findFirst({
+          where: { id, userId: session.user.id },
+          include: { customer: true, delegatedTo: true, taskTags: { include: { tag: true } } },
+        })
+      : updated
+  return NextResponse.json(final ?? updated)
 }

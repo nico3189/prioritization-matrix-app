@@ -140,6 +140,34 @@ function IconLink() {
   )
 }
 
+function IconGmail({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className ?? 'w-4 h-4 shrink-0'}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 48 48"
+      aria-hidden
+    >
+      <path fill="#4caf50" d="M45,16.2l-5,2.75l-5,4.75L35,40h7c1.657,0,3-1.343,3-3V16.2z" />
+      <path fill="#1e88e5" d="M3,16.2l3.614,1.71L13,23.7V40H6c-1.657,0-3-1.343-3-3V16.2z" />
+      <polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17" />
+      <path fill="#c62828" d="M3,12.298V16.2l10,7.5V11.2L9.876,8.859C9.132,8.301,8.228,8,7.298,8h0C4.924,8,3,9.924,3,12.298z" />
+      <path fill="#fbc02d" d="M45,12.298V16.2l-10,7.5V11.2l3.124-2.341C38.868,8.301,39.772,8,40.702,8h0 C43.076,8,45,9.924,45,12.298z" />
+    </svg>
+  )
+}
+
+function ensureUrlProtocol(url: string): string {
+  const t = url.trim()
+  if (!t) return ''
+  if (/^https?:\/\//i.test(t)) return t
+  return 'https://' + t
+}
+
+function isGmailUrl(url: string): boolean {
+  return /mail\.google\.com/i.test(url)
+}
+
 function IconTag() {
   return (
     <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -261,7 +289,6 @@ interface TaskFormState {
   dueAt: string
   delegatedToId: string
   url: string
-  tag: string
 }
 
 function emptyForm(): TaskFormState {
@@ -276,7 +303,6 @@ function emptyForm(): TaskFormState {
     dueAt: '',
     delegatedToId: '',
     url: '',
-    tag: '',
   }
 }
 
@@ -302,7 +328,6 @@ function formFromTask(task: {
   dueAt?: string | Date | null
   delegatedToId?: string | null
   url?: string | null
-  tag?: string | null
 }): TaskFormState {
   return {
     title: task.title ?? '',
@@ -315,7 +340,6 @@ function formFromTask(task: {
     dueAt: toISO16(task.dueAt),
     delegatedToId: task.delegatedToId ?? '',
     url: task.url ?? '',
-    tag: task.tag ?? '',
   }
 }
 
@@ -414,12 +438,71 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
   const [tagInput, setTagInput] = useState('')
+  const [urlInput, setUrlInput] = useState('')
+  const [tagIds, setTagIds] = useState<string[]>([])
+  const [displayTags, setDisplayTags] = useState<Array<{ id: string; name: string; color: string }>>([])
   const backdropClickedRef = useRef(false)
+
+  const urls = (form.url || '').split('\n').map((s) => s.trim()).filter(Boolean)
+  const addUrl = useCallback(() => {
+    const v = urlInput.trim()
+    if (!v) return
+    setForm((f) => ({
+      ...f,
+      url: [...(f.url || '').split('\n').map((s) => s.trim()).filter(Boolean), v].join('\n'),
+    }))
+    setUrlInput('')
+  }, [urlInput])
+  const removeUrl = useCallback((index: number) => {
+    setForm((f) => {
+      const list = (f.url || '').split('\n').map((s) => s.trim()).filter(Boolean)
+      return { ...f, url: list.filter((_, i) => i !== index).join('\n') }
+    })
+  }, [])
 
   useEffect(() => {
     if (task) setForm(formFromTask(task))
     else if (!taskId) setForm(emptyForm())
   }, [task, taskId])
+
+  useEffect(() => {
+    if (!task) {
+      setTagIds([])
+      setDisplayTags([])
+      return
+    }
+    const tt = (task as { taskTags?: Array<{ tagId: string; tag: { id: string; name: string; color: string } }> }).taskTags
+    if (tt && tt.length > 0) {
+      setTagIds(tt.map((t) => t.tagId))
+      setDisplayTags(tt.map((t) => ({ id: t.tag.id, name: t.tag.name, color: t.tag.color })))
+      return
+    }
+    const legacyTag = (task as { tag?: string | null }).tag
+    if (legacyTag) {
+      const names = legacyTag.split(',').map((s) => s.trim()).filter(Boolean)
+      if (names.length === 0) {
+        setTagIds([])
+        setDisplayTags([])
+        return
+      }
+      Promise.all(
+        names.map((name) =>
+          fetch('/api/settings/tags', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+          }).then((r) => r.json())
+        )
+      ).then((tags) => {
+        const valid = tags.filter((t: { id?: string }) => t?.id)
+        setTagIds(valid.map((t: { id: string }) => t.id))
+        setDisplayTags(valid.map((t: { id: string; name: string; color: string }) => ({ id: t.id, name: t.name, color: t.color })))
+      })
+    } else {
+      setTagIds([])
+      setDisplayTags([])
+    }
+  }, [task])
 
   useEffect(() => {
     setIsCompleting(false)
@@ -438,21 +521,34 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   const update = (patch: Partial<TaskFormState>) =>
     setForm((prev) => ({ ...prev, ...patch }))
 
-  const tagsArray = form.tag
-    ? form.tag.split(',').map((s) => s.trim()).filter(Boolean)
-    : []
-
-  const addTag = () => {
+  const addTag = async () => {
     const t = tagInput.trim()
     if (!t) return
-    const next = tagsArray.includes(t) ? tagsArray : [...tagsArray, t]
-    update({ tag: next.join(', ') })
+    if (displayTags.some((d) => d.name.toLowerCase() === t.toLowerCase())) {
+      setTagInput('')
+      return
+    }
+    try {
+      const r = await fetch('/api/settings/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: t }),
+      })
+      const tag = await r.json()
+      if (!r.ok) throw new Error(tag?.error ?? 'Fejl')
+      if (tag?.id) {
+        setTagIds((prev) => [...prev, tag.id])
+        setDisplayTags((prev) => [...prev, { id: tag.id, name: tag.name, color: tag.color }])
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Kunne ikke tilføje tag')
+    }
     setTagInput('')
   }
 
   const removeTag = (index: number) => {
-    const next = tagsArray.filter((_, i) => i !== index)
-    update({ tag: next.join(', ') })
+    setTagIds((prev) => prev.filter((_, i) => i !== index))
+    setDisplayTags((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleSaveAndQualify = () => {
@@ -469,7 +565,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
       dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null,
       delegatedToId: form.delegatedToId || null,
       url: form.url.trim() || null,
-      tag: form.tag.trim() || null,
+      tagIds,
       status: 'qualified',
     }
     updateTask.mutate(payload, {
@@ -914,13 +1010,51 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                         {LOADING.url}
                       </div>
                     ) : (
-                      <input
-                        type="url"
-                        value={form.url}
-                        onChange={(e) => update({ url: e.target.value })}
-                        placeholder="https://..."
-                        className={displayFieldStackedClass}
-                      />
+                      <>
+                        <input
+                          type="text"
+                          value={urlInput}
+                          onChange={(e) => setUrlInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              addUrl()
+                            }
+                          }}
+                          placeholder="Indtast URL og tryk Enter for at tilføje"
+                          className={displayFieldStackedClass}
+                        />
+                        {urls.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {urls.map((url, i) => (
+                              <a
+                                key={`${url}-${i}`}
+                                href={ensureUrlProtocol(url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-700/40 text-blue-400 hover:text-blue-300 hover:border-blue-600 transition-colors duration-200"
+                              >
+                                {isGmailUrl(url) && <IconGmail className="w-4 h-4 shrink-0" />}
+                                <span className="truncate max-w-[200px]">{url}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    removeUrl(i)
+                                  }}
+                                  className="hover:opacity-80 transition-opacity shrink-0"
+                                  aria-label="Fjern URL"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                   </PropertyRowStacked>
                 </div>
@@ -946,19 +1080,24 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                         className={displayFieldStackedClass}
                       />
                     )}
-                    {!taskLoading && tagsArray.length > 0 && (
+                    {!taskLoading && displayTags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-3">
-                        {tagsArray.map((tag, i) => (
+                        {displayTags.map((tag, i) => (
                           <span
-                            key={i}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border ${TAG_COLORS[i % TAG_COLORS.length]}`}
+                            key={tag.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border"
+                            style={{
+                              backgroundColor: `${tag.color}20`,
+                              color: tag.color,
+                              borderColor: `${tag.color}40`,
+                            }}
                           >
-                            {tag}
+                            {tag.name}
                             <button
                               type="button"
                               onClick={() => removeTag(i)}
                               className="hover:opacity-80 transition-opacity duration-200 ease-out"
-                              aria-label={`Fjern ${tag}`}
+                              aria-label={`Fjern ${tag.name}`}
                             >
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

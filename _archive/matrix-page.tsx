@@ -1,3 +1,12 @@
+/**
+ * Arkiveret Matrix-side. Kan genaktiveres ved at:
+ * 1. Oprette app/(app)/matrix/page.tsx med dette indhold
+ * 2. Oprette app/(app)/matrix/layout.tsx med: metadata.title = 'Matrix'
+ * 3. Tilføje { href: '/matrix', label: 'Matrix', icon: IconGrid, iconColor: 'text-violet-400' } til navItems i app-shell.tsx
+ * 4. Tilføje { href: '/matrix', label: 'Matrix' } til navItems i app-sidebar.tsx
+ * 5. Tilføje '/matrix/:path*' til middleware.ts matcher
+ */
+
 'use client'
 
 import { useState, useMemo } from 'react'
@@ -35,7 +44,8 @@ export default function MatrixPage() {
   })
   const byQuadrant = useMemo(() => {
     const map: Record<string, Array<{ importance?: number | null; urgency?: number | null; dueAt?: string | null; id: string; [k: string]: unknown }>> = { Q1: [], Q2: [], Q3: [], Q4: [] }
-    ;(tasks as Array<{ importance?: number | null; urgency?: number | null; dueAt?: string | null; durationBucket?: string | null; delegatedToId?: string | null; delegatedTo?: { name?: string } | null; id: string; [k: string]: unknown }>).forEach((t) => {
+    const list = Array.isArray(tasks) ? tasks : []
+    list.forEach((t) => {
       const q = getMatrixQuadrant(t)
       map[q].push(t)
     })

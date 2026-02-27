@@ -12,10 +12,10 @@ function LoginForm() {
   return (
     <>
       <h1 className="text-3xl font-semibold text-slate-100 mb-2">
-        Prioritization Matrix
+        Prioriteringsmatrix
       </h1>
       <p className="text-sm text-slate-300 mb-6">
-        Eisenhower todo med AI og Google Calendar. Log ind med Google.
+        Eisenhower-opgaveliste med AI og Google Calendar. Log ind med Google.
       </p>
       {isCallbackError && (
         <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm">
@@ -28,7 +28,7 @@ function LoginForm() {
       )}
       <button
         type="button"
-        onClick={() => signIn('google', { callbackUrl: '/inbox' })}
+        onClick={() => signIn('google', { callbackUrl: '/today' })}
         className="w-full bg-app-accent text-white px-4 py-3 rounded-lg text-sm font-medium shadow-md hover:opacity-90 active:scale-95 transition-colors duration-200 ease-out"
       >
         Log ind med Google

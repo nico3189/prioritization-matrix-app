@@ -1,9 +1,17 @@
 {
-  "name": "Prioritization Matrix",
-  "short_name": "Prioritization",
-  "description": "Eisenhower todo med AI og Google Calendar",
+  "name": "Prioriteringsmatrix",
+  "short_name": "Prioritering",
+  "description": "Eisenhower-opgaveliste med AI og Google Calendar",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0B1120",
-  "theme_color": "#3B82F6"
+  "theme_color": "#3B82F6",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
 }

@@ -45,6 +45,38 @@ function formatDeadline(iso: string | Date | null | undefined): string {
   return `${day}. ${month} ${h}.${m}`
 }
 
+type DeadlineUrgency = 'normal' | '72h' | '48h' | '24h' | '4h' | 'overdue'
+
+function getDeadlineUrgency(dueAt: string | Date | null | undefined): DeadlineUrgency {
+  if (!dueAt) return 'normal'
+  const due = typeof dueAt === 'string' ? new Date(dueAt) : dueAt
+  const now = Date.now()
+  const hoursUntil = (due.getTime() - now) / (1000 * 60 * 60)
+  if (hoursUntil < 0) return 'overdue'
+  if (hoursUntil <= 4) return '4h'
+  if (hoursUntil <= 24) return '24h'
+  if (hoursUntil <= 48) return '48h'
+  if (hoursUntil <= 72) return '72h'
+  return 'normal'
+}
+
+function getDeadlineStyles(urgency: DeadlineUrgency): string {
+  switch (urgency) {
+    case 'overdue':
+      return 'text-red-400 font-bold'
+    case '4h':
+      return 'text-red-400 font-bold'
+    case '24h':
+      return 'text-red-400'
+    case '48h':
+      return 'text-amber-400'
+    case '72h':
+      return 'text-slate-100'
+    default:
+      return ''
+  }
+}
+
 const iconClass = 'w-3.5 h-3.5 shrink-0 text-app-muted'
 
 function IconFolder() {
@@ -123,6 +155,7 @@ export interface TaskCardTask {
   dueAt?: string | Date | null
   durationBucket?: string | null
   tag?: string | null
+  taskTags?: Array<{ tag: { id: string; name: string; color: string } }>
   status?: string | null
   nextAction?: string | null
 }
@@ -153,10 +186,13 @@ export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLev
   const imp = task.importance ?? 0
   const urg = getEffectiveUrgency(task.urgency ?? 0, task.dueAt ?? null)
   const score = Math.round(getScore(imp, urg))
-  const tags = task.tag
-    ?.split(',')
-    .map((t) => t.trim())
-    .filter(Boolean) ?? []
+  const tags =
+    task.taskTags && task.taskTags.length > 0
+      ? task.taskTags.map((tt) => ({ name: tt.tag.name, color: tt.tag.color }))
+      : (task.tag?.split(',').map((t) => t.trim()).filter(Boolean) ?? []).map((name, i) => ({
+          name,
+          color: ['#8B5CF6', '#10B981', '#F59E0B', '#0EA5E9', '#EC4899'][i % 5],
+        }))
 
   const content = (
     <>
@@ -198,9 +234,15 @@ export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLev
         {task.dueAt && (
           <>
             <div className="h-4 w-px shrink-0 bg-white/10" aria-hidden />
-            <span className="flex items-center gap-1 shrink-0 whitespace-nowrap">
+            <span
+              className={cn(
+                'flex items-center gap-1 shrink-0 whitespace-nowrap',
+                getDeadlineStyles(getDeadlineUrgency(task.dueAt)) || 'text-app-muted'
+              )}
+            >
               <IconCalendar />
               {formatDeadline(task.dueAt)}
+              {getDeadlineUrgency(task.dueAt) === 'overdue' && <span className="ml-1">⚠️</span>}
             </span>
           </>
         )}
@@ -256,15 +298,17 @@ export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLev
 
       {tags.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-1.5">
-          {tags.map((tag, i) => (
+          {tags.map((tag) => (
             <span
-              key={i}
-              className={cn(
-                'inline-flex px-2 py-0.5 rounded-md text-xs font-medium border',
-                TAG_COLORS[i % TAG_COLORS.length]
-              )}
+              key={tag.name}
+              className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium border"
+              style={{
+                backgroundColor: `${tag.color}20`,
+                color: tag.color,
+                borderColor: `${tag.color}40`,
+              }}
             >
-              {tag}
+              {tag.name}
             </span>
           ))}
         </div>

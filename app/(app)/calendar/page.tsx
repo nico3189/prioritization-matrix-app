@@ -124,25 +124,8 @@ function useCreateTaskFromEvent() {
         throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg))
       }
       const task = json
-      let parseFailed = false
-      let parseErrorDetail: string | null = null
-      try {
-        const parseRes = await fetch(`/api/tasks/${task.id}/parse`, {
-          method: 'POST',
-        })
-        if (!parseRes.ok) {
-          parseFailed = true
-          const err = await parseRes.json().catch(() => ({}))
-          parseErrorDetail =
-            (err as { detail?: string; error?: string }).detail ??
-            (err as { detail?: string; error?: string }).error ??
-            null
-        }
-      } catch (e) {
-        parseFailed = true
-        parseErrorDetail = e instanceof Error ? e.message : 'Netværksfejl'
-      }
-      return { task, parseFailed, parseErrorDetail }
+      fetch(`/api/tasks/${task.id}/parse`, { method: 'POST', keepalive: true })
+      return { task }
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
@@ -174,7 +157,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     if (creatingFor) {
-      const prefix = creatingFor.type === 'prep' ? 'Prep: ' : 'Follow-up: '
+      const prefix = creatingFor.type === 'prep' ? 'Forberedelse: ' : 'Opfølgning: '
       setInputText(`${prefix}${creatingFor.event.summary}`)
       setFollowUpTimeFrame(creatingFor.type === 'followup' ? '' : '')
       setFollowUpTimeCustom('')
@@ -229,25 +212,13 @@ export default function CalendarPage() {
   return (
     <div>
       <h1 className="text-3xl font-semibold text-slate-100 mb-2">Kalender</h1>
-      <p className="text-xs text-app-muted mb-6">Events fra de sidste 3 dage og 14 dage frem. Opret prep- eller follow-up opgaver.</p>
+      <p className="text-xs text-app-muted mb-6">Begivenheder fra de sidste 3 dage og 14 dage frem. Opret forberedelse- eller opfølgning-opgaver.</p>
       {createTask.isSuccess && (
-        <div
-          className={`mb-4 p-4 rounded-lg border ${
-            createTask.data?.parseFailed
-              ? 'bg-amber-500/10 border-amber-500/30'
-              : 'bg-emerald-500/10 border-emerald-500/30'
-          }`}
-        >
-          <p
-            className={`text-sm ${
-              createTask.data?.parseFailed ? 'text-amber-200' : 'text-emerald-200'
-            }`}
-          >
-            {createTask.data?.parseFailed
-              ? 'Opgave oprettet. AI kunne ikke udfylde felterne – tjek opgaven i Alle inputs.'
-              : 'Opgave oprettet. AI har udfyldt felterne.'}{' '}
-            <Link href="/inbox" className="underline hover:no-underline">
-              Gå til Alle inputs
+        <div className="mb-4 p-4 rounded-lg border bg-emerald-500/10 border-emerald-500/30">
+          <p className="text-sm text-emerald-200">
+            Opgave oprettet. AI kvalificerer i baggrunden.{' '}
+            <Link href="/historik" className="underline hover:no-underline">
+              Gå til Historik
             </Link>
           </p>
         </div>
@@ -283,7 +254,7 @@ export default function CalendarPage() {
         </div>
       )}
       {isLoading ? (
-        <p className="text-sm text-app-muted">Henter events...</p>
+        <p className="text-sm text-app-muted">Henter begivenheder...</p>
       ) : (
         <div className="space-y-8">
           {(() => {
@@ -470,7 +441,7 @@ export default function CalendarPage() {
                   handleSubmitFromModal()
                 }
               }}
-              placeholder="Skriv din besked (som ved opgave fra Alle inputs)..."
+              placeholder="Skriv din besked (som ved opgave fra inputfeltet)..."
               rows={4}
               className="w-full app-input-gradient border border-white/10 rounded-lg px-4 py-3 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40 resize-none mb-4"
               disabled={createTask.isPending}

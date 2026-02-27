@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { getUserIdFromApiKey } from '@/lib/api-key'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { TaskStatus } from '@prisma/client'
@@ -33,7 +34,11 @@ export async function GET(req: Request) {
     if (view === 'matrix') where.status = { in: [TaskStatus.qualified, TaskStatus.needs_clarification] }
     const tasks = await prisma.task.findMany({
       where,
-      include: { customer: true, delegatedTo: true },
+      include: {
+        customer: true,
+        delegatedTo: true,
+        taskTags: { include: { tag: true } },
+      },
       orderBy: [{ createdAt: 'desc' }],
     })
     return NextResponse.json(tasks)
@@ -47,8 +52,16 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  let userId: string | null = null
   const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session?.user?.id) {
+    userId = session.user.id
+  } else {
+    const auth = req.headers.get('authorization')
+    const bearer = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : null
+    if (bearer) userId = await getUserIdFromApiKey(bearer)
+  }
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const body = await req.json()
     const parsed = createSchema.safeParse(body)
@@ -56,10 +69,11 @@ export async function POST(req: Request) {
     const title = parsed.data.rawText.trim().split(/\n/)[0] || parsed.data.rawText.slice(0, 200)
     const task = await prisma.task.create({
       data: {
-        userId: session.user.id,
+        userId,
         title,
         notes: parsed.data.rawText.length > 500 ? parsed.data.rawText.slice(0, 2000) : parsed.data.rawText,
         status: TaskStatus.inbox_raw,
+        parseStatus: 'pending',
         ...(parsed.data.linkedEventId && { linkedEventId: parsed.data.linkedEventId }),
         ...(parsed.data.linkedEventType && { linkedEventType: parsed.data.linkedEventType }),
         ...(parsed.data.linkedEventTitle && { linkedEventTitle: parsed.data.linkedEventTitle }),
@@ -70,7 +84,7 @@ export async function POST(req: Request) {
       },
       include: { customer: true, delegatedTo: true },
     })
-    await logTaskEvent(task.id, session.user.id, 'created')
+    await logTaskEvent(task.id, userId, 'created')
     return NextResponse.json(task)
   } catch (err) {
     console.error('[POST /api/tasks]', err)

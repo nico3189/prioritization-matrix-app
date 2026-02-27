@@ -6,6 +6,11 @@ import { TaskOverlay } from '@/components/task-overlay'
 import { TaskCard, type TaskCardTask } from '@/components/task-card'
 import { useMarkTaskDone } from '@/lib/use-mark-task-done'
 import { useToast } from '@/components/toast'
+import {
+  TaskListFiltersBar,
+  useFilteredAndSortedTasks,
+  type SortOption,
+} from '@/components/task-list-filters'
 
 function useClarifyTasks() {
   return useQuery({
@@ -17,8 +22,11 @@ function useClarifyTasks() {
 export default function ClarifyPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [completingId, setCompletingId] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<SortOption>('newest')
+  const [searchQuery, setSearchQuery] = useState('')
   const showToast = useToast()
   const { data: tasks = [], isLoading } = useClarifyTasks()
+  const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, searchQuery)
   const markDone = useMarkTaskDone({
     onSuccess: () => {
       showToast('Opgave udført!')
@@ -36,8 +44,17 @@ export default function ClarifyPage() {
       {isLoading ? (
         <p className="text-sm text-app-muted">Henter...</p>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {tasks.map((t: TaskCardTask) => (
+        <>
+          <TaskListFiltersBar
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            resultCount={filteredTasks.length}
+            totalCount={tasks.length}
+          />
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filteredTasks.map((t: TaskCardTask) => (
             <TaskCard
               key={t.id}
               task={t}
@@ -49,7 +66,8 @@ export default function ClarifyPage() {
               isCompleting={completingId === t.id}
             />
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       <TaskOverlay

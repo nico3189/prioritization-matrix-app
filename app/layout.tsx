@@ -6,9 +6,15 @@ import { Providers } from '@/components/providers'
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
 
 export const metadata: Metadata = {
-  title: 'Prioritization Matrix',
-  description: 'Eisenhower todo app with AI Smart Input',
+  title: {
+    default: 'Prioriteringsmatrix',
+    template: '%s | Prioriteringsmatrix',
+  },
+  description: 'Eisenhower-opgaveliste med AI og Google Calendar',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({

@@ -20,8 +20,32 @@ model User {
   sessions      Session[]
   customers     Customer[]
   teamMembers   TeamMember[]
+  tags          Tag[]
   tasks         Task[]
   taskEvents    TaskEvent[]
+  userSettings  UserSettings?
+  apiKeys       ApiKey[]
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   @db.VarChar(100)
+  keyHash   String   @unique @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserSettings {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  workHours  Json?    // { mon: { start: "08:00", end: "16:00" }, tue: ..., sun: ... }
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Account {
@@ -83,6 +107,20 @@ model TeamMember {
   @@unique([userId, code])
 }
 
+model Tag {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  color        String   @db.VarChar(7)
+  isBlacklisted Boolean @default(false)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskTags TaskTag[]
+
+  @@index([userId])
+  @@unique([userId, name])
+}
+
 enum TaskStatus {
   inbox_raw
   needs_clarification
@@ -130,6 +168,9 @@ model Task {
   urgency      Int?        // 0-100
   nextAction   String?     @db.Text
 
+  /** AI parse status: pending=venter, parsing=kører, parsed=klar, failed=fejlede */
+  parseStatus  String?     @db.VarChar(20)
+
   dueAt        DateTime?
 
   url          String?     @db.Text
@@ -146,6 +187,7 @@ model Task {
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   delegatedTo TeamMember? @relation(fields: [delegatedToId], references: [id], onDelete: SetNull)
   events     TaskEvent[]
+  taskTags   TaskTag[]
 
   @@index([userId])
   @@index([userId, status])
@@ -175,4 +217,15 @@ model TaskEvent {
 
   @@index([taskId])
   @@index([userId])
+}
+
+model TaskTag {
+  taskId String
+  tagId  String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+  @@index([tagId])
 }

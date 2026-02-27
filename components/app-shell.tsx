@@ -6,13 +6,14 @@ import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
+import { AddTaskModal } from '@/components/add-task-modal'
 
 const iconClass = 'w-5 h-5 shrink-0'
 
-function IconInbox() {
+function IconClock() {
   return (
     <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   )
 }
@@ -33,10 +34,10 @@ function IconStar() {
   )
 }
 
-function IconGrid() {
+function IconList() {
   return (
     <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
     </svg>
   )
 }
@@ -91,12 +92,14 @@ function IconChevronRight() {
 }
 
 const navItems = [
-  { href: '/inbox', label: 'Alle inputs', icon: IconInbox, iconColor: 'text-blue-400' },
   { href: '/clarify', label: 'Mangler afklaring', icon: IconQuestion, iconColor: 'text-orange-400' },
   { href: '/today', label: 'Fokusopgaver', icon: IconStar, iconColor: 'text-amber-400' },
-  { href: '/matrix', label: 'Matrix', icon: IconGrid, iconColor: 'text-violet-400' },
+  { href: '/alle-opgaver', label: 'Alle opgaver', icon: IconList, iconColor: 'text-sky-400' },
   { href: '/done', label: 'Udførte', icon: IconCheck, iconColor: 'text-emerald-400' },
   { href: '/calendar', label: 'Kalender', icon: IconCalendar, iconColor: 'text-sky-400' },
+]
+const navItemsSecondary = [
+  { href: '/historik', label: 'Historik', icon: IconClock, iconColor: 'text-app-muted' },
   { href: '/settings', label: 'Indstillinger', icon: IconCog, iconColor: 'text-slate-400' },
 ]
 
@@ -114,32 +117,35 @@ function NavLinks({
   onNavigate?: () => void
   collapsed?: boolean
 }) {
+  const renderItem = (item: (typeof navItems)[0] | (typeof navItemsSecondary)[0]) => {
+    const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+    const Icon = item.icon
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={onNavigate}
+        title={collapsed ? item.label : undefined}
+        className={cn(
+          'flex items-center gap-3 rounded-lg text-sm transition-colors duration-200',
+          collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2',
+          isActive
+            ? 'bg-app-accent/10 text-slate-100'
+            : 'text-slate-300 hover:text-white hover:bg-white/5'
+        )}
+      >
+        <span className={item.iconColor}>
+          <Icon />
+        </span>
+        {!collapsed && <span>{item.label}</span>}
+      </Link>
+    )
+  }
   return (
     <>
-      {navItems.map((item) => {
-        const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-        const Icon = item.icon
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            title={collapsed ? item.label : undefined}
-            className={cn(
-              'flex items-center gap-3 rounded-lg text-sm transition-colors duration-200',
-              collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2',
-              isActive
-                ? 'bg-app-accent/10 text-slate-100'
-                : 'text-slate-300 hover:text-white hover:bg-white/5'
-            )}
-          >
-            <span className={item.iconColor}>
-              <Icon />
-            </span>
-            {!collapsed && <span>{item.label}</span>}
-          </Link>
-        )
-      })}
+      {navItems.map(renderItem)}
+      {!collapsed && <div className="my-2 border-t border-white/5" />}
+      {navItemsSecondary.map(renderItem)}
     </>
   )
 }
@@ -186,7 +192,7 @@ export function AppShell({ user, children }: AppShellProps) {
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          'hidden md:flex shrink-0 app-surface-gradient border-r border-white/5 flex-col min-h-screen transition-[width] duration-200 ease-out overflow-hidden',
+          'hidden md:flex shrink-0 app-surface-gradient border-r border-white/5 flex-col sticky top-0 h-screen self-start transition-[width] duration-200 ease-out overflow-hidden',
           sidebarCollapsed ? 'w-[64px]' : 'w-[260px]'
         )}
       >
@@ -267,7 +273,7 @@ export function AppShell({ user, children }: AppShellProps) {
       <button
         type="button"
         onClick={() => setMobileMenuOpen(true)}
-        className="md:hidden fixed bottom-6 left-6 z-40 w-14 h-14 rounded-full bg-app-accent text-white shadow-hover flex items-center justify-center transition-all duration-200 ease-out active:scale-95 hover:opacity-90"
+        className="md:hidden fixed bottom-6 left-6 z-40 w-14 h-14 rounded-full app-card-gradient border border-blue-700/40 shadow-card text-blue-400 hover:text-blue-300 hover:border-blue-600 flex items-center justify-center transition-all duration-200 ease-out active:scale-95"
         aria-label="Åbn menu"
       >
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -350,6 +356,8 @@ export function AppShell({ user, children }: AppShellProps) {
       <main className="flex-1 min-w-0 p-4 pb-20 md:pb-8 md:p-8 max-w-7xl mx-auto w-full">
         {children}
       </main>
+
+      <AddTaskModal />
     </div>
   )
 }

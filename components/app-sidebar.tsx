@@ -7,12 +7,14 @@ import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { href: '/inbox', label: 'Alle inputs' },
   { href: '/clarify', label: 'Mangler afklaring' },
   { href: '/today', label: 'Fokusopgaver' },
-  { href: '/matrix', label: 'Matrix' },
+  { href: '/alle-opgaver', label: 'Alle opgaver' },
   { href: '/done', label: 'Udførte' },
   { href: '/calendar', label: 'Kalender' },
+]
+const navItemsSecondary = [
+  { href: '/historik', label: 'Historik' },
   { href: '/settings', label: 'Indstillinger' },
 ]
 
@@ -50,6 +52,24 @@ export function AppSidebar({ user }: AppSidebarProps) {
       </div>
       <nav className="flex-1 p-2">
         {navItems.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-200 ease-out',
+                isActive
+                  ? 'bg-app-accent/10 border-l-4 border-app-accent text-slate-100'
+                  : 'text-slate-300 hover:text-white hover:bg-white/5'
+              )}
+            >
+              {item.label}
+            </Link>
+          )
+        })}
+        <div className="my-2 border-t border-white/5" />
+        {navItemsSecondary.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
             <Link
