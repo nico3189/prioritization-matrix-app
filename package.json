@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "PRISMA_DATABASE_URL=${PRISMA_DATABASE_URL:-$DATABASE_URL} prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate",
+    "postinstall": "PRISMA_DATABASE_URL=${PRISMA_DATABASE_URL:-$DATABASE_URL} prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio"
