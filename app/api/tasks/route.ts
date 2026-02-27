@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { TaskStatus } from '@prisma/client'
 import { logTaskEvent } from '@/lib/events'
+import { runParseForTask } from '@/lib/parse-task'
 
 const createSchema = z.object({
   rawText: z.string().min(1).max(10000),
@@ -85,6 +86,9 @@ export async function POST(req: Request) {
       include: { customer: true, delegatedTo: true },
     })
     await logTaskEvent(task.id, userId, 'created')
+    runParseForTask(task.id, userId).catch((err) =>
+      console.error('[POST /api/tasks] background parse failed:', err)
+    )
     return NextResponse.json(task)
   } catch (err) {
     console.error('[POST /api/tasks]', err)
