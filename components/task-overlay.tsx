@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { AppSelect } from '@/components/app-select'
 import { AppDatePicker } from '@/components/app-date-picker'
+import { cn } from '@/lib/utils'
 import { getScore } from '@/lib/eisenhower'
 import { useToast } from '@/components/toast'
 
@@ -108,6 +109,22 @@ function IconCalendar() {
   return (
     <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  )
+}
+
+function IconLock() {
+  return (
+    <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+    </svg>
+  )
+}
+
+function IconLockOpen() {
+  return (
+    <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
     </svg>
   )
 }
@@ -350,7 +367,7 @@ function PropertyRow({
   children,
 }: {
   icon: React.ReactNode
-  label: string
+  label: React.ReactNode
   required?: boolean
   children: React.ReactNode
 }) {
@@ -405,6 +422,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   const reParseTask = useReParseTask()
   const [form, setForm] = useState<TaskFormState>(emptyForm)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [recurrenceSubmenuOpen, setRecurrenceSubmenuOpen] = useState(false)
   const [isCompleting, setIsCompleting] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
   const actionsRef = useRef<HTMLDivElement>(null)
@@ -432,6 +450,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
     function handleClickOutside(e: MouseEvent) {
       if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
         setActionsOpen(false)
+        setRecurrenceSubmenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -441,7 +460,21 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   const [urlInput, setUrlInput] = useState('')
   const [tagIds, setTagIds] = useState<string[]>([])
   const [displayTags, setDisplayTags] = useState<Array<{ id: string; name: string; color: string }>>([])
+  const [doneConfirmOpen, setDoneConfirmOpen] = useState(false)
   const backdropClickedRef = useRef(false)
+
+  const taskForm = task ? formFromTask(task) : null
+  const taskTagIds =
+    (task as { taskTags?: Array<{ tagId: string }> })?.taskTags?.map(
+      (tt) => tt.tagId
+    ) ?? []
+  const hasUnsavedChanges = Boolean(
+    task &&
+      taskForm &&
+      (JSON.stringify(form) !== JSON.stringify(taskForm) ||
+        JSON.stringify([...tagIds].sort()) !==
+          JSON.stringify([...taskTagIds].sort()))
+  )
 
   const urls = (form.url || '').split('\n').map((s) => s.trim()).filter(Boolean)
   const addUrl = useCallback(() => {
@@ -570,16 +603,8 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
     }
     updateTask.mutate(payload, {
       onSuccess: () => {
-        const dueAt = form.dueAt === '' ? null : form.dueAt || null
-        syncTaskUrgency.mutate(
-          { id: task.id, dueAt },
-          {
-            onSettled: () => {
-              showToast('Gemt!')
-              closeWithAnimation()
-            },
-          }
-        )
+        showToast('Gemt!')
+        closeWithAnimation()
       },
     })
   }
@@ -592,19 +617,77 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
     })
   }
 
-  const handleMarkDone = () => {
+  const performMarkDone = () => {
     if (!task) return
     setIsCompleting(true)
+    setDoneConfirmOpen(false)
     updateTask.mutate(
       { id: task.id, status: 'done' },
       {
-        onSuccess: () => {
-          showToast('Opgave udført!')
+        onSuccess: (data: { spawnedTask?: { id: string; dueAt: string } }) => {
+          const spawned = data.spawnedTask
+          if (spawned?.dueAt) {
+            const d = new Date(spawned.dueAt)
+            const day = String(d.getDate()).padStart(2, '0')
+            const month = String(d.getMonth() + 1).padStart(2, '0')
+            const h = String(d.getHours()).padStart(2, '0')
+            const m = String(d.getMinutes()).padStart(2, '0')
+            showToast(`Opgave udført! Næste opgave oprettet til ${day}/${month} ${h}.${m}`)
+          } else {
+            showToast('Opgave udført!')
+          }
           setTimeout(() => onClose(), 550)
         },
         onError: () => setIsCompleting(false),
       }
     )
+  }
+
+  const handleMarkDone = () => {
+    if (!task) return
+    if (hasUnsavedChanges) {
+      setDoneConfirmOpen(true)
+      return
+    }
+    performMarkDone()
+  }
+
+  const handleSaveAndMarkDone = () => {
+    if (!task || !form.type.trim() || !form.durationBucket.trim()) return
+    const payload = {
+      id: task.id,
+      title: form.title.trim() || undefined,
+      notes: form.notes.trim() || undefined,
+      customerId: form.customerId || null,
+      type: form.type || null,
+      importance: form.importance === '' ? undefined : Number(form.importance),
+      urgency: form.urgency === '' ? undefined : Number(form.urgency),
+      durationBucket: form.durationBucket,
+      dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null,
+      delegatedToId: form.delegatedToId || null,
+      url: form.url.trim() || null,
+      tagIds,
+      status: 'done',
+    }
+    setIsCompleting(true)
+    setDoneConfirmOpen(false)
+    updateTask.mutate(payload, {
+      onSuccess: (data: { spawnedTask?: { id: string; dueAt: string } }) => {
+        const spawned = data.spawnedTask
+        if (spawned?.dueAt) {
+          const d = new Date(spawned.dueAt)
+          const day = String(d.getDate()).padStart(2, '0')
+          const month = String(d.getMonth() + 1).padStart(2, '0')
+          const h = String(d.getHours()).padStart(2, '0')
+          const m = String(d.getMinutes()).padStart(2, '0')
+          showToast(`Gemt og udført! Næste opgave oprettet til ${day}/${month} ${h}.${m}`)
+        } else {
+          showToast('Gemt og udført!')
+        }
+        setTimeout(() => onClose(), 550)
+      },
+      onError: () => setIsCompleting(false),
+    })
   }
 
   const handleRestore = () => {
@@ -644,7 +727,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
       }}
     >
       <div
-        className={`relative app-card-gradient rounded-lg shadow-hover border border-white/10 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col ${
+        className={`relative app-card-gradient rounded-lg shadow-hover border border-white/10 w-full max-w-[calc(100vw-2rem)] sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col ${
           isClosing
             ? 'animate-[modalContentOut_180ms_ease-out_forwards]'
             : 'animate-[modalContentIn_180ms_ease-out_forwards]'
@@ -670,8 +753,50 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
             </svg>
           </div>
         )}
+        {doneConfirmOpen && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-black/80 backdrop-blur-sm p-4"
+            aria-modal="true"
+            role="alertdialog"
+            aria-labelledby="done-confirm-title"
+          >
+            <div className="bg-app-card border border-white/10 rounded-xl2 p-5 shadow-card max-w-sm w-full">
+              <h3 id="done-confirm-title" className="text-base font-medium text-slate-100 mb-2">
+                Du har ændringer der ikke er gemt
+              </h3>
+              <p className="text-sm text-slate-300 mb-4">
+                Vil du markere opgaven som udført uden at gemme, eller gemme først?
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveAndMarkDone}
+                  disabled={updateTask.isPending || !form.type.trim() || !form.durationBucket.trim()}
+                  className="w-full bg-emerald-700/80 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  Gem og markér udført
+                </button>
+                <button
+                  type="button"
+                  onClick={performMarkDone}
+                  disabled={updateTask.isPending}
+                  className="w-full bg-white/10 hover:bg-white/15 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-white/10 disabled:opacity-50"
+                >
+                  Markér udført uden at gemme
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDoneConfirmOpen(false)}
+                  className="w-full text-app-muted hover:text-slate-200 px-4 py-2 rounded-lg text-sm transition-colors"
+                >
+                  Annuller
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Header */}
-        <div className="flex items-center justify-between gap-3 shrink-0 px-4 py-3 border-b border-white/10 bg-slate-900/40">
+        <div className="flex items-center justify-between gap-2 sm:gap-3 shrink-0 px-3 sm:px-4 py-3 border-b border-white/10 bg-slate-900/40">
           <button
             type="button"
             onClick={closeWithAnimation}
@@ -756,6 +881,96 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                           Genberegn hastegrad og vigtighed
                         </button>
                       </li>
+                      {task.status !== 'done' && (
+                        <>
+                          <li role="separator" className="my-1 border-t border-white/5" />
+                          <li role="none" className="relative">
+                          <div
+                            className="flex items-center"
+                            onMouseEnter={() => setRecurrenceSubmenuOpen(true)}
+                            onMouseLeave={() => setRecurrenceSubmenuOpen(false)}
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => setRecurrenceSubmenuOpen((o) => !o)}
+                              className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out flex items-center justify-between"
+                            >
+                              <span>Gentagelse</span>
+                              <span className="text-app-muted text-xs">
+                                {(task as { recurrenceRule?: string | null }).recurrenceRule === 'DAILY'
+                                  ? 'Daglig'
+                                  : (task as { recurrenceRule?: string | null }).recurrenceRule === 'WEEKLY'
+                                    ? 'Ugentlig'
+                                    : (task as { recurrenceRule?: string | null }).recurrenceRule === 'MONTHLY'
+                                      ? 'Månedlig'
+                                      : 'Ingen'}
+                              </span>
+                              <svg className="w-3.5 h-3.5 text-app-muted shrink-0 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                            {recurrenceSubmenuOpen && (
+                              <ul
+                                role="menu"
+                                className="absolute right-full top-0 mr-0.5 min-w-[10rem] rounded-lg border border-white/10 app-dropdown-gradient shadow-lg py-1 z-[70] animate-[dropdownIn_150ms_ease-out_forwards]"
+                              >
+                                {(['DAILY', 'WEEKLY', 'MONTHLY'] as const).map((rule) => {
+                                  const label = rule === 'DAILY' ? 'Daglig' : rule === 'WEEKLY' ? 'Ugentlig' : 'Månedlig'
+                                  const isActive = (task as { recurrenceRule?: string | null }).recurrenceRule === rule
+                                  return (
+                                    <li key={rule} role="none">
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setActionsOpen(false)
+                                          setRecurrenceSubmenuOpen(false)
+                                          updateTask.mutate({ id: task.id, recurrenceRule: rule })
+                                        }}
+                                        disabled={updateTask.isPending}
+                                        className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50 flex items-center gap-2"
+                                      >
+                                        {isActive ? (
+                                          <svg className="w-4 h-4 text-app-accent shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                          </svg>
+                                        ) : (
+                                          <span className="w-4 shrink-0" aria-hidden />
+                                        )}
+                                        {label}
+                                      </button>
+                                    </li>
+                                  )
+                                })}
+                                <li role="none">
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setActionsOpen(false)
+                                      setRecurrenceSubmenuOpen(false)
+                                      updateTask.mutate({ id: task.id, recurrenceRule: null })
+                                    }}
+                                    disabled={updateTask.isPending}
+                                    className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50 flex items-center gap-2"
+                                  >
+                                    {(task as { recurrenceRule?: string | null }).recurrenceRule == null ? (
+                                      <svg className="w-4 h-4 text-app-accent shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                      </svg>
+                                    ) : (
+                                      <span className="w-4 shrink-0" aria-hidden />
+                                    )}
+                                    Ingen
+                                  </button>
+                                </li>
+                              </ul>
+                            )}
+                          </div>
+                        </li>
+                        </>
+                      )}
                     </ul>
                   )}
                 </div>
@@ -774,29 +989,39 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                   type="button"
                   onClick={handleSaveAndQualify}
                   disabled={taskLoading || !form.type.trim() || !form.durationBucket.trim() || updateTask.isPending || syncTaskUrgency.isPending}
-                  className="shrink-0 p-2 rounded-lg border border-white/10 bg-white/5 text-blue-500 hover:text-blue-400 hover:bg-white/10 transition-colors duration-200 ease-out disabled:opacity-50"
+                  className={cn(
+                    'shrink-0 p-2 rounded-lg border transition-colors duration-200 ease-out disabled:opacity-50',
+                    hasUnsavedChanges
+                      ? 'border-blue-500/40 bg-blue-600/90 text-white hover:bg-blue-500'
+                      : 'border-white/10 bg-white/5 text-blue-500 hover:text-blue-400 hover:bg-white/10'
+                  )}
                   aria-label="Gem"
                   title="Gem"
                 >
                   {(updateTask.isPending || syncTaskUrgency.isPending) ? (
-                    <svg className="w-4 h-4 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24" aria-hidden>
+                    <svg className={cn('w-4 h-4 animate-spin', hasUnsavedChanges ? 'text-white' : 'text-blue-500')} fill="none" viewBox="0 0 24 24" aria-hidden>
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
                   ) : (
-                    <svg className="w-4 h-4 text-blue-500" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                    <svg className={cn('w-4 h-4', hasUnsavedChanges ? 'text-white' : 'text-blue-500')} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
                       <path d="M13.9,4.6l-2.5-2.5C11.3,2.1,11.1,2,11,2H3C2.4,2,2,2.4,2,3v10c0,0.6,0.4,1,1,1h10c0.6,0,1-0.4,1-1V5C14,4.9,13.9,4.7,13.9,4.6z M6,3h4v2H6V3z M10,13H6V9h4V13z M11,13V9c0-0.6-0.4-1-1-1H6C5.4,8,5,8.4,5,9v4H3V3h2v2c0,0.6,0.4,1,1,1h4c0.6,0,1-0.4,1-1V3.2l2,2V13H11z" />
                     </svg>
                   )}
                 </button>
                 {task.status !== 'done' && (
                   <>
-                    <div className="w-px h-6 bg-white/10 shrink-0" aria-hidden />
+                    <div className="w-px h-6 bg-white/15 shrink-0 mx-2" aria-hidden />
                     <button
                       type="button"
                       onClick={handleMarkDone}
                       disabled={updateTask.isPending}
-                      className="shrink-0 p-2 rounded-lg border border-white/10 bg-emerald-700/80 text-white hover:bg-emerald-600 transition-colors duration-200 ease-out disabled:opacity-50"
+                      className={cn(
+                        'shrink-0 p-2 rounded-lg border transition-colors duration-200 ease-out disabled:opacity-50',
+                        hasUnsavedChanges
+                          ? 'border-white/10 bg-white/5 text-app-muted hover:text-slate-400 hover:bg-white/10'
+                          : 'border-white/10 bg-emerald-700/80 text-white hover:bg-emerald-600'
+                      )}
                       aria-label="Marker opgave som udført"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -810,8 +1035,8 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1">
-          <div className="px-6 pt-4 pb-6 space-y-4">
+        <div className="overflow-y-auto flex-1 min-w-0">
+          <div className="px-4 sm:px-6 pt-4 pb-6 space-y-4">
             {!taskLoading && !task && (
               <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm">
                 Opgave ikke fundet.
@@ -881,7 +1106,61 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                       </span>
                     )}
                   </PropertyRow>
-                  <PropertyRow icon={<IconImportance />} label="Vigtighed">
+                  <PropertyRow
+                    icon={<IconImportance />}
+                    label={
+                      <span className="flex items-center gap-1.5">
+                        Vigtighed
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (!taskId) return
+                            const isLocked = !!task?.importanceManuallyOverriddenAt
+                            updateTask.mutate(
+                              {
+                                id: taskId,
+                                ...(isLocked
+                                  ? { importanceManuallyOverriddenAt: null }
+                                  : { lockImportance: true }),
+                              },
+                              {
+                                onSuccess: () =>
+                                  showToast(
+                                    isLocked
+                                      ? 'Låst op – AI kan nu ændre vigtighed'
+                                      : 'Låst – AI vil ikke ændre vigtighed'
+                                  ),
+                              }
+                            )
+                          }}
+                          className={cn(
+                            'p-0.5 rounded transition-colors',
+                            task?.importanceManuallyOverriddenAt
+                              ? 'text-amber-400 hover:text-amber-300'
+                              : 'text-app-muted hover:text-slate-400'
+                          )}
+                          title={
+                            task?.importanceManuallyOverriddenAt
+                              ? 'Klik for at låse op'
+                              : 'Klik for at låse – AI vil ikke ændre værdien'
+                          }
+                          aria-label={
+                            task?.importanceManuallyOverriddenAt
+                              ? 'Lås vigtighed op'
+                              : 'Lås vigtighed'
+                          }
+                        >
+                          {task?.importanceManuallyOverriddenAt ? (
+                            <IconLock />
+                          ) : (
+                            <IconLockOpen />
+                          )}
+                        </button>
+                      </span>
+                    }
+                  >
                     {taskLoading ? (
                       <div className={displayFieldClass + ' blur-[2px] select-none py-1'} aria-hidden>
                         {LOADING.importance}
@@ -898,7 +1177,61 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                       />
                     )}
                   </PropertyRow>
-                  <PropertyRow icon={<IconZap />} label="Hastegrad">
+                  <PropertyRow
+                    icon={<IconZap />}
+                    label={
+                      <span className="flex items-center gap-1.5">
+                        Hastegrad
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (!taskId) return
+                            const isLocked = !!task?.urgencyManuallyOverriddenAt
+                            updateTask.mutate(
+                              {
+                                id: taskId,
+                                ...(isLocked
+                                  ? { urgencyManuallyOverriddenAt: null }
+                                  : { lockUrgency: true }),
+                              },
+                              {
+                                onSuccess: () =>
+                                  showToast(
+                                    isLocked
+                                      ? 'Låst op – AI kan nu ændre hastegrad'
+                                      : 'Låst – AI vil ikke ændre hastegrad'
+                                  ),
+                              }
+                            )
+                          }}
+                          className={cn(
+                            'p-0.5 rounded transition-colors',
+                            task?.urgencyManuallyOverriddenAt
+                              ? 'text-amber-400 hover:text-amber-300'
+                              : 'text-app-muted hover:text-slate-400'
+                          )}
+                          title={
+                            task?.urgencyManuallyOverriddenAt
+                              ? 'Klik for at låse op'
+                              : 'Klik for at låse – AI vil ikke ændre værdien'
+                          }
+                          aria-label={
+                            task?.urgencyManuallyOverriddenAt
+                              ? 'Lås hastegrad op'
+                              : 'Lås hastegrad'
+                          }
+                        >
+                          {task?.urgencyManuallyOverriddenAt ? (
+                            <IconLock />
+                          ) : (
+                            <IconLockOpen />
+                          )}
+                        </button>
+                      </span>
+                    }
+                  >
                     {taskLoading ? (
                       <div className={displayFieldClass + ' blur-[2px] select-none py-1'} aria-hidden>
                         {LOADING.urgency}

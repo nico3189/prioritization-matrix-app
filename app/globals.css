@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Mobil: forhindrer iOS zoom ved fokus på input (kræver font-size >= 16px) */
+@media (max-width: 768px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Forhindrer horisontal scroll på mobil */
+html,
+body {
+  overflow-x: hidden;
+}
+
 :root {
   --app-bg: #0B1120;
   --app-bg-darker: #050a12;

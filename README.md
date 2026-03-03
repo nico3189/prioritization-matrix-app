@@ -12,20 +12,26 @@ Eisenhower todo app with AI Smart Input and Google Calendar (Google SSO only).
 
 ## Local setup
 
-1. Copy `.env.example` to `.env` and fill in:
-   - `DATABASE_URL` (e.g. local Postgres or Heroku Postgres URL)
-   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-   - `NEXTAUTH_SECRET` (e.g. `openssl rand -base64 32`)
-   - `NEXTAUTH_URL=http://localhost:3000`
-   - `OPENAI_API_KEY`
+1. Copy `.env.example` to `.env` og udfyld Google, NextAuth, OpenAI. Sæt `DATABASE_URL` til `postgresql://$(whoami)@localhost:5432/prioritization_matrix`.
 
-2. Install and migrate:
+2. Install:
    ```bash
    npm install
-   npx prisma migrate deploy
    ```
 
-3. Run:
+3. *(Første gang)* Opsæt lokal Postgres (Homebrew, ingen Docker):
+   ```bash
+   npm run db:setup-local
+   ```
+
+4. *(Første gang)* Hent data fra live:
+   ```bash
+   set -a && source .env && set +a
+   LIVE_DATABASE_URL="${DATABASE_URL}" npm run db:sync-from-live
+   ```
+   Eller med Heroku: `LIVE_DATABASE_URL="$(heroku config:get DATABASE_URL -a <din-app>)" npm run db:sync-from-live`
+
+5. Kør:
    ```bash
    npm run dev
    ```
@@ -86,5 +92,6 @@ Hastegrad for opgaver med deadline opdateres automatisk mod “effektiv” haste
 - `npm run dev` – development
 - `npm run build` – production build
 - `npm run start` – start production server
-- `npm run db:migrate` – run Prisma migrations
-- `npm run db:studio` – open Prisma Studio
+- `npm run db:setup-local` – opsæt lokal Postgres (Homebrew)
+- `npm run db:sync-from-live` – hent data fra live til lokal
+- `npm run db:restore-now` – gendan eksisterende dump

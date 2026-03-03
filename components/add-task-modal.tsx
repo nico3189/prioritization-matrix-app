@@ -152,7 +152,7 @@ export function AddTaskModal() {
             >
             <div
               ref={containerRef}
-              className="bg-app-card rounded-xl2 p-8 shadow-card border border-white/5"
+              className="bg-app-card rounded-xl2 p-4 sm:p-8 shadow-card border border-white/5 max-w-[calc(100vw-2rem)]"
             >
               <h2 id="add-task-title" className="text-xl font-medium text-slate-100 mb-6">
                 Tilføj opgave
@@ -168,8 +168,8 @@ export function AddTaskModal() {
                     }
                   }}
                   placeholder="Skriv eller indsæt en opgave (⌘+Enter = opret)"
-                  rows={6}
-                  className="w-full bg-slate-900/60 border border-white/5 rounded-lg px-4 py-3 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40 resize-none"
+                  rows={5}
+                  className="w-full min-w-0 bg-slate-900/60 border border-white/5 rounded-lg px-4 py-3 text-base sm:text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40 resize-none"
                   disabled={createTask.isPending}
                 />
                 <div className="flex justify-end">

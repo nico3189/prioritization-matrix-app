@@ -1,15 +1,55 @@
 import type { TaskType } from '@prisma/client'
+import {
+  DEFAULT_PRIORITY_FACTORS,
+  type PriorityFactors,
+} from '@/lib/priority-factors'
 
-/** Importance boost fra type (Kunde > Salg > Ledelse > Internt). */
-const TYPE_IMPORTANCE_BOOST: Record<TaskType, number> = {
-  kunde: 15,
-  salg: 10,
-  ledelse: 5,
-  internt: 0,
+/**
+ * Beregner importance med type, kundepriority og keyword-offset integreret.
+ * @param aiImportance AI's rå vurdering (0-100)
+ * @param type Opgavetype – kunde/salg/ledelse vægtes højere end internt
+ * @param customerPriority Kundens priority 0-10 (5=neutral). Kun relevant når type er kunde/salg.
+ * @param factors Brugerens indstillede faktorer fra Indstillinger. Hvis undefined bruges standardværdier.
+ * @param keywordImportance Offset fra keyword-match i rawText (beregnes med getKeywordOffsets).
+ */
+export function computeImportanceWithContext(
+  aiImportance: number,
+  type: TaskType | null | undefined,
+  customerPriority?: number | null,
+  factors?: PriorityFactors | null,
+  keywordImportance?: number
+): number {
+  const f = factors ?? DEFAULT_PRIORITY_FACTORS
+  const typeOffset = type ? f.typeImportance[type] ?? 0 : 0
+  const customerOffset =
+    customerPriority != null
+      ? (customerPriority - 5) * f.customerMultiplier
+      : 0
+  const kwOffset = keywordImportance ?? 0
+  const raw = aiImportance + typeOffset + customerOffset + kwOffset
+  return Math.round(Math.max(0, Math.min(100, raw)))
 }
 
-export function getImportanceBoostFromType(type: TaskType | null | undefined): number {
-  return type ? TYPE_IMPORTANCE_BOOST[type] ?? 0 : 0
+/**
+ * Beregner urgency uden deadline med type, kundepriority og keyword-offset integreret.
+ * Bruges kun når der ikke er deadline – ellers bruges computeUrgencyFromDeadline.
+ */
+export function computeUrgencyWithContext(
+  aiUrgency: number,
+  type: TaskType | null | undefined,
+  customerPriority?: number | null,
+  factors?: PriorityFactors | null,
+  keywordUrgency?: number
+): number {
+  const f = factors ?? DEFAULT_PRIORITY_FACTORS
+  const typeOffset = type ? f.typeUrgency[type] ?? 0 : 0
+  const customerOffset =
+    customerPriority != null
+      ? (customerPriority - 5) * f.customerMultiplier
+      : 0
+  const kwOffset = keywordUrgency ?? 0
+  const raw = aiUrgency + typeOffset + customerOffset + kwOffset
+  return Math.round(Math.max(0, Math.min(100, raw)))
 }
 
 /**

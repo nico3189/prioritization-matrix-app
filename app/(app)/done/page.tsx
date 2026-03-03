@@ -7,8 +7,10 @@ import { TaskCard, type TaskCardTask } from '@/components/task-card'
 import {
   TaskListFiltersBar,
   useFilteredAndSortedTasks,
+  useTaskListViewMode,
   type SortOption,
 } from '@/components/task-list-filters'
+import { TaskTable } from '@/components/task-table'
 
 function useDoneTasks() {
   return useQuery({
@@ -21,6 +23,7 @@ export default function DonePage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('newest')
   const [searchQuery, setSearchQuery] = useState('')
+  const [viewMode, setViewMode] = useTaskListViewMode()
   const { data: tasks = [], isLoading } = useDoneTasks()
   const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, searchQuery)
 
@@ -43,16 +46,25 @@ export default function DonePage() {
             onSearchChange={setSearchQuery}
             resultCount={filteredTasks.length}
             totalCount={tasks.length}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
           />
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredTasks.map((task: TaskCardTask) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onClick={() => setSelectedTaskId(task.id)}
+          {viewMode === 'table' ? (
+            <TaskTable
+              tasks={filteredTasks as TaskCardTask[]}
+              onTaskClick={(t) => setSelectedTaskId(t.id)}
             />
-          ))}
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredTasks.map((task: TaskCardTask) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={() => setSelectedTaskId(task.id)}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
 

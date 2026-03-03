@@ -1,7 +1,26 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
+import { cn } from '@/lib/utils'
 import { getScore, getEffectiveUrgency } from '@/lib/eisenhower'
+
+export type TaskListViewMode = 'grid' | 'table'
+
+const TASK_LIST_VIEW_KEY = 'task-list-view-mode'
+
+export function useTaskListViewMode(): [TaskListViewMode, (mode: TaskListViewMode) => void] {
+  const [mode, setMode] = useState<TaskListViewMode>('grid')
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = localStorage.getItem(TASK_LIST_VIEW_KEY) as TaskListViewMode | null
+    if (stored === 'grid' || stored === 'table') setMode(stored)
+  }, [])
+  const setAndPersist = (m: TaskListViewMode) => {
+    setMode(m)
+    if (typeof window !== 'undefined') localStorage.setItem(TASK_LIST_VIEW_KEY, m)
+  }
+  return [mode, setAndPersist]
+}
 
 export type SortOption =
   | 'newest'
@@ -9,10 +28,14 @@ export type SortOption =
   | 'deadline'
   | 'priority'
   | 'title'
+  | 'completedDesc'
+  | 'completedAsc'
 
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'newest', label: 'Nyeste først' },
   { value: 'oldest', label: 'Ældste først' },
+  { value: 'completedDesc', label: 'Afsluttet nyeste først' },
+  { value: 'completedAsc', label: 'Afsluttet ældste først' },
   { value: 'deadline', label: 'Deadline snarest' },
   { value: 'priority', label: 'Prioritet højst' },
   { value: 'title', label: 'Titel A-Å' },
@@ -117,6 +140,7 @@ export interface TaskForFilter {
   title?: string | null
   notes?: string | null
   createdAt?: string | null
+  completedAt?: string | null
   dueAt?: string | null
   importance?: number | null
   urgency?: number | null
@@ -168,6 +192,16 @@ export function useFilteredAndSortedTasks<T extends TaskForFilter>(
           const titleB = (b.title ?? '').toLowerCase()
           return titleA.localeCompare(titleB)
         }
+        case 'completedDesc': {
+          const aDate = a.completedAt ? new Date(a.completedAt).getTime() : 0
+          const bDate = b.completedAt ? new Date(b.completedAt).getTime() : 0
+          return bDate - aDate
+        }
+        case 'completedAsc': {
+          const aDate = a.completedAt ? new Date(a.completedAt).getTime() : Number.MAX_SAFE_INTEGER
+          const bDate = b.completedAt ? new Date(b.completedAt).getTime() : Number.MAX_SAFE_INTEGER
+          return aDate - bDate
+        }
         default:
           return 0
       }
@@ -182,6 +216,8 @@ export interface TaskListFiltersBarProps {
   onSearchChange: (q: string) => void
   resultCount?: number
   totalCount?: number
+  viewMode?: TaskListViewMode
+  onViewModeChange?: (mode: TaskListViewMode) => void
 }
 
 export function TaskListFiltersBar({
@@ -191,6 +227,8 @@ export function TaskListFiltersBar({
   onSearchChange,
   resultCount,
   totalCount,
+  viewMode,
+  onViewModeChange,
 }: TaskListFiltersBarProps) {
   const showCount =
     resultCount !== undefined &&
@@ -199,11 +237,11 @@ export function TaskListFiltersBar({
     resultCount !== totalCount
 
   return (
-    <div className="flex flex-wrap items-center gap-3 mb-4">
+    <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 mb-4">
       <select
         value={sortBy}
         onChange={(e) => onSortChange(e.target.value as SortOption)}
-        className="bg-slate-900/60 border border-white/5 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-app-accent/40"
+        className="w-full sm:w-auto bg-slate-900/60 border border-white/5 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-app-accent/40"
         aria-label="Sortering"
       >
         {SORT_OPTIONS.map((opt) => (
@@ -216,15 +254,55 @@ export function TaskListFiltersBar({
         type="search"
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
-        placeholder="Tilgængelige termer: kunde, tag, titel, noter, type - efterfulgt af :"
+        placeholder="Søg: kunde:, tag:, titel:..."
         title="Præfikser: kunde, tag, titel, noter, type. Fx kunde:XYZ tag:urgent"
         aria-label="Søg"
-        className="flex-1 min-w-[180px] bg-slate-900/60 border border-white/5 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40"
+        className="flex-1 min-w-0 w-full sm:min-w-[180px] bg-slate-900/60 border border-white/5 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40"
       />
       {showCount && (
         <span className="text-xs text-app-muted">
           {resultCount} af {totalCount}
         </span>
+      )}
+      {viewMode != null && onViewModeChange && (
+        <div
+          className="flex rounded-lg border border-white/5 overflow-hidden bg-slate-900/60"
+          role="group"
+          aria-label="Visning"
+        >
+          <button
+            type="button"
+            onClick={() => onViewModeChange('grid')}
+            className={cn(
+              'px-3 py-2 text-sm transition-colors duration-200',
+              viewMode === 'grid'
+                ? 'bg-app-accent/20 text-slate-100'
+                : 'text-app-muted hover:text-slate-200'
+            )}
+            title="Grid-visning"
+            aria-pressed={viewMode === 'grid'}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewModeChange('table')}
+            className={cn(
+              'px-3 py-2 text-sm transition-colors duration-200',
+              viewMode === 'table'
+                ? 'bg-app-accent/20 text-slate-100'
+                : 'text-app-muted hover:text-slate-200'
+            )}
+            title="Tabel-visning"
+            aria-pressed={viewMode === 'table'}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+        </div>
       )}
     </div>
   )

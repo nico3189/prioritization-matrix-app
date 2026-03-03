@@ -61,7 +61,7 @@ Returnér STRICT JSON efter det definerede schema.
 Titel vs beskrivelse: Brugerens fulde indtastning (rawText) gemmes som BESKRIVELSE. "title" skal være ÉN kort, præcise handling – som en overskrift (maks 5-10 ord). Brug kundens/team-medlemmets fulde navn i titlen, ikke 3-bogstavs koden (fx "Giv CeramicSpeed sparring" i stedet for "Giv CES sparring").
 
 Brug kundeliste/team-liste/calendar events som sandhedskilder. Kunder/team med kode er angivet som "Navn (KODE)" – match på enten navn eller 3-bogstavs kode.
-customer: Tildel kunde når kundens navn ELLER 3-bogstavs kode (fx CES, MSO, VDE) er nævnt i rawText. Så snart en kode fra kundelisten forekommer i teksten, brug den som customer (returnér koden eller navnet).
+customer: Sæt KUN kunde når du er 100% sikker. Hvis du er det mindste i tvivl – returnér null. Kundens navn eller 3-bogstavs kode skal være UTVETYIGT nævnt i rawText. Ved tvivl, usikker match, uklar kontekst eller flere mulige kunder: returnér null.
 delegatedTo: Tildel team-medlem når navn eller 3-bogstavs kode er nævnt i kontekst af at hjælpe/levere/udføre opgaven (fx "MSO kan hjælpe med", "bed Lukas om", "delegér til VDE"). "For Lukas" = Lukas i title/notes, ingen delegation.
 dueAt: Sæt når der er en eksplicit dato/tid/deadline. Brug "now" og workHours til at beregne. VIGTIG – når rawText siger "gøres i dag", "inden jeg går hjem i dag", "skal være løst inden i morgen", "inden i dag" osv. UDEN eksplicit klokkeslæt: brug workHours.end (fx 16:00) som deadline for den pågældende dag. mandag=mon, tirsdag=tue, onsdag=wed, torsdag=thu, fredag=fri, lørdag=sat, søndag=sun. Når workHours[dag] er null = fridag (brugeren arbejder ikke den dag). "i dag" = dagens workHours.end – hvis i dag er fridag, brug næste arbejdsdags end. "i morgen" = morgendagens workHours.end – hvis i morgen er fridag, brug næste arbejdsdags end. "tirsdag" uden kl = tirsdags workHours.end (hvis tirsdag er fridag, brug næste arbejdsdag). "inden tirsdag" = senest tirsdags workHours.end. Hvis workHours ikke er angivet: brug 08:00 som start, 16:00 som end. "inden kl. 15.00 i dag" = I DAG kl 15:00 (eksplicit tid overstyrer). "tirsdag i næste uge" = tirsdag i næste uge kl workHours.end. "inden for 1 time" = now + 1 time. Når kun ugedag/dato uden klokkeslæt: brug workHours.end for den dag. Returnér ISO-streng i lokal tid. Varighed (fx "ca. 30 min") er IKKE en deadline.
 Ingen opfundne datoer; ved usikkerhed brug needsMoreInfo.
@@ -78,7 +78,7 @@ type SKAL ALTID være én af: kunde, internt, salg, ledelse. Vælg ud fra opgave
 
 VIGTIG – type vs. customer:
 - Når type er "internt": customer SKAL altid være null. Interne møder har typisk kollegaer som deltagere, IKKE kunder. Sæt aldrig customer ved type internt.
-- Sæt kun customer når type er kunde eller salg OG der er tydelig kundekontekst i rawText (fx kundens navn eller kode).
+- Sæt kun customer når type er kunde eller salg OG der er tydelig, utvetydig kundekontekst i rawText. Ved den mindste tvivl: returnér customer null.
 - Hvis linkedEvent er angivet: brug event-titel som kontekst. Event-titler som "X / Y (tjek ind...)" eller "1:1 med [kollega]" indikerer interne møder – sæt type til internt og customer til null.
 
 tags: Tilføj 1-4 korte, relevante tags som array af strenge. Tags skal beskrive opgavens emne, kontekst eller kategori. Foretræk tags fra tagNames-listen hvis angivet. Brug ALDRIG tags fra blacklistedTagNames. Brug danske eller engelske ord. Ingen duplikater. Maks 4 tags.

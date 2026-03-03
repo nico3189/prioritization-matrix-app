@@ -92,8 +92,8 @@ function IconChevronRight() {
 }
 
 const navItems = [
-  { href: '/clarify', label: 'Mangler afklaring', icon: IconQuestion, iconColor: 'text-orange-400' },
-  { href: '/today', label: 'Fokusopgaver', icon: IconStar, iconColor: 'text-amber-400' },
+  { href: '/today', label: 'Fokus opgaver', icon: IconStar, iconColor: 'text-amber-400' },
+  { href: '/clarify', label: 'Kræver handling', icon: IconQuestion, iconColor: 'text-orange-400' },
   { href: '/alle-opgaver', label: 'Alle opgaver', icon: IconList, iconColor: 'text-sky-400' },
   { href: '/done', label: 'Udførte', icon: IconCheck, iconColor: 'text-emerald-400' },
   { href: '/calendar', label: 'Kalender', icon: IconCalendar, iconColor: 'text-sky-400' },
@@ -189,10 +189,10 @@ export function AppShell({ user, children }: AppShellProps) {
 
   return (
     <div className="flex min-h-screen bg-transparent">
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar – fixed så den følger med ved scroll */}
       <aside
         className={cn(
-          'hidden md:flex shrink-0 app-surface-gradient border-r border-white/5 flex-col sticky top-0 h-screen self-start transition-[width] duration-200 ease-out overflow-hidden',
+          'hidden md:flex shrink-0 app-surface-gradient border-r border-white/5 flex-col fixed left-0 top-0 z-30 h-screen transition-[width] duration-200 ease-out overflow-hidden',
           sidebarCollapsed ? 'w-[64px]' : 'w-[260px]'
         )}
       >
@@ -352,8 +352,13 @@ export function AppShell({ user, children }: AppShellProps) {
         </>
       )}
 
-      {/* Main content */}
-      <main className="flex-1 min-w-0 p-4 pb-20 md:pb-8 md:p-8 max-w-7xl mx-auto w-full">
+      {/* Main content – margin-left så det ikke overlapper fixed sidebar */}
+      <main
+        className={cn(
+          'flex-1 min-w-0 p-4 pb-20 md:pb-8 md:p-8 max-w-7xl mx-auto w-full transition-[margin] duration-200 ease-out',
+          sidebarCollapsed ? 'md:ml-[64px]' : 'md:ml-[260px]'
+        )}
+      >
         {children}
       </main>
 

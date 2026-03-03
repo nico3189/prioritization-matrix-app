@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Mangler afklaring',
+  title: 'Kræver handling',
 }
 
 export default function ClarifyLayout({

@@ -1,6 +1,13 @@
 import { prisma } from '@/lib/db'
 import { TaskStatus } from '@prisma/client'
-import { computeUrgencyFromDeadline, getImportanceBoostFromType } from '@/lib/eisenhower'
+import {
+  computeUrgencyFromDeadline,
+  computeImportanceWithContext,
+} from '@/lib/eisenhower'
+import {
+  getKeywordOffsets,
+  normalizePriorityFactors,
+} from '@/lib/priority-factors'
 import { parseSmartInput } from '@/lib/ai/parser'
 import { toZonedTime } from 'date-fns-tz'
 import { format } from 'date-fns'
@@ -11,9 +18,9 @@ const MAX_AI_TASKS_PER_RUN = 15
 
 /**
  * Opdaterer hastegrad for opgaver:
- * - Med deadline: beregnes fra nærhed til deadline
- * - Uden deadline: AI vurderer ud fra tekst (max MAX_AI_TASKS_PER_RUN per run)
- * @param userId - Hvis sat, kun denne brugers opgaver; ellers alle (til cron).
+ * - Med deadline: urgency beregnes fra nærhed til deadline
+ * - Uden deadline: importance fra AI med type og kundepriority integreret (max MAX_AI_TASKS_PER_RUN)
+ * Urgency opdateres kun fra deadline – aldrig fra AI når ingen deadline.
  */
 export async function runSyncUrgency(userId?: string): Promise<{ updated: number; total: number }> {
   const where: { status: { in: TaskStatus[] }; userId?: string } = {
@@ -34,12 +41,14 @@ export async function runSyncUrgency(userId?: string): Promise<{ updated: number
       title: true,
       notes: true,
       updatedAt: true,
+      importanceManuallyOverriddenAt: true,
+      urgencyManuallyOverriddenAt: true,
     },
   })
 
   const withDeadline = tasks.filter((t) => t.dueAt != null)
   const withoutDeadline = tasks
-    .filter((t) => t.dueAt == null)
+    .filter((t) => t.dueAt == null && !t.importanceManuallyOverriddenAt)
     .sort((a, b) => (a.updatedAt?.getTime() ?? 0) - (b.updatedAt?.getTime() ?? 0))
     .slice(0, MAX_AI_TASKS_PER_RUN)
 
@@ -58,6 +67,13 @@ export async function runSyncUrgency(userId?: string): Promise<{ updated: number
   }
 
   const userIds = Array.from(new Set(withoutDeadline.map((t) => t.userId)))
+  const settingsByUser = await prisma.userSettings.findMany({
+    where: { userId: { in: userIds } },
+    select: { userId: true, priorityFactors: true },
+  })
+  const factorsByUser = Object.fromEntries(
+    settingsByUser.map((s) => [s.userId, normalizePriorityFactors(s.priorityFactors)])
+  )
   const customersByUser = await prisma.customer.findMany({
     where: { userId: { in: userIds } },
     select: { id: true, userId: true, name: true, code: true, priority: true },
@@ -90,23 +106,27 @@ export async function runSyncUrgency(userId?: string): Promise<{ updated: number
         teamMemberNames: teamMembers,
         calendarEvents: [],
       })
-      let newImp = result.importance != null ? Math.round(result.importance) : 50
-      let newUrg = result.urgency != null ? Math.round(result.urgency) : 40
+      const aiImportance =
+        result.importance != null ? Math.round(result.importance) : 50
       const customer = task.customerId
-        ? customersByUser.find((c) => c.id === task.customerId)
+        ? customersByUser.find(
+            (c) => c.userId === task.userId && c.id === task.customerId
+          )
         : null
-      if (customer?.priority != null) {
-        const boost = (customer.priority - 5) * 2
-        newImp = Math.max(0, Math.min(100, newImp + boost))
-        newUrg = Math.max(0, Math.min(100, newUrg + boost))
-      }
-      newImp = Math.max(0, Math.min(100, newImp + getImportanceBoostFromType(task.type)))
+      const factors = factorsByUser[task.userId]
+      const kwOffsets = getKeywordOffsets(rawText, factors.keywordWeights)
+      const newImp = computeImportanceWithContext(
+        aiImportance,
+        task.type,
+        customer?.priority,
+        factors,
+        kwOffsets.importance
+      )
       const currentImp = task.importance ?? 0
-      const currentUrg = task.urgency ?? 0
-      if (newImp !== currentImp || newUrg !== currentUrg) {
+      if (newImp !== currentImp) {
         await prisma.task.update({
           where: { id: task.id },
-          data: { importance: newImp, urgency: newUrg },
+          data: { importance: newImp },
         })
         updated += 1
       }

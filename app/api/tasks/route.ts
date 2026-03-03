@@ -30,7 +30,14 @@ export async function GET(req: Request) {
     const where: Record<string, unknown> = { userId }
     if (status) where.status = status
     if (view === 'clarify') {
-      where.status = { in: [TaskStatus.inbox_raw, TaskStatus.needs_clarification] }
+      where.OR = [
+        { status: { in: [TaskStatus.inbox_raw, TaskStatus.needs_clarification] } },
+        {
+          status: TaskStatus.qualified,
+          dueAt: { lt: new Date() },
+        },
+      ]
+      delete where.status
     }
     if (view === 'matrix') where.status = { in: [TaskStatus.qualified, TaskStatus.needs_clarification] }
     const tasks = await prisma.task.findMany({
@@ -39,10 +46,20 @@ export async function GET(req: Request) {
         customer: true,
         delegatedTo: true,
         taskTags: { include: { tag: true } },
+        events: {
+          where: { eventType: 'done' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { createdAt: true },
+        },
       },
       orderBy: [{ createdAt: 'desc' }],
     })
-    return NextResponse.json(tasks)
+    const mapped = tasks.map(({ events, ...t }) => ({
+      ...t,
+      completedAt: events[0]?.createdAt ?? null,
+    }))
+    return NextResponse.json(mapped)
   } catch (err) {
     console.error('[GET /api/tasks]', err)
     return NextResponse.json(

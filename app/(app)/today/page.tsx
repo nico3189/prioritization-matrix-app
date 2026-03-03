@@ -10,8 +10,10 @@ import { useToast } from '@/components/toast'
 import {
   TaskListFiltersBar,
   useFilteredAndSortedTasks,
+  useTaskListViewMode,
   type SortOption,
 } from '@/components/task-list-filters'
+import { TaskTable } from '@/components/task-table'
 
 function useTodayTasks() {
   return useQuery({
@@ -25,6 +27,7 @@ export default function TodayPage() {
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('priority')
   const [searchQuery, setSearchQuery] = useState('')
+  const [viewMode, setViewMode] = useTaskListViewMode()
   const showToast = useToast()
   const markDone = useMarkTaskDone({
     onSuccess: () => {
@@ -57,21 +60,35 @@ export default function TodayPage() {
             onSearchChange={setSearchQuery}
             resultCount={filteredTasks.length}
             totalCount={tasks.length}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
           />
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {displayTasks.map((task: TaskCardTask) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                onClick={() => setSelectedTaskId(task.id)}
-                onMarkDone={() => {
-                  setCompletingId(task.id)
-                  markDone.mutate(task.id)
-                }}
-                isCompleting={completingId === task.id}
-              />
-            ))}
-          </div>
+          {viewMode === 'table' ? (
+            <TaskTable
+              tasks={displayTasks as TaskCardTask[]}
+              onTaskClick={(t) => setSelectedTaskId(t.id)}
+              onMarkDone={(t) => {
+                setCompletingId(t.id)
+                markDone.mutate(t.id)
+              }}
+              completingId={completingId}
+            />
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {displayTasks.map((task: TaskCardTask) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={() => setSelectedTaskId(task.id)}
+                  onMarkDone={() => {
+                    setCompletingId(task.id)
+                    markDone.mutate(task.id)
+                  }}
+                  isCompleting={completingId === task.id}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
 

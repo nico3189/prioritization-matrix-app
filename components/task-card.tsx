@@ -35,6 +35,16 @@ function truncate(str: string, max: number): string {
 
 const MONTH_SHORT = ['jan.', 'feb.', 'mar.', 'apr.', 'maj', 'jun.', 'jul.', 'aug.', 'sep.', 'okt.', 'nov.', 'dec.']
 
+function formatTimestamp(iso: string | Date | null | undefined): string {
+  if (!iso) return '–'
+  const d = typeof iso === 'string' ? new Date(iso) : iso
+  const day = d.getDate()
+  const month = MONTH_SHORT[d.getMonth()]
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
+  return `${day}. ${month} ${d.getFullYear()} ${h}.${m}`
+}
+
 function formatDeadline(iso: string | Date | null | undefined): string {
   if (!iso) return ''
   const d = typeof iso === 'string' ? new Date(iso) : iso
@@ -135,6 +145,14 @@ function IconClock() {
   )
 }
 
+function IconRepeat() {
+  return (
+    <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  )
+}
+
 function IconScore() {
   return (
     <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -152,12 +170,17 @@ export interface TaskCardTask {
   delegatedTo?: { name?: string; code?: string } | null
   importance?: number | null
   urgency?: number | null
+  importanceManuallyOverriddenAt?: string | Date | null
+  urgencyManuallyOverriddenAt?: string | Date | null
   dueAt?: string | Date | null
   durationBucket?: string | null
   tag?: string | null
   taskTags?: Array<{ tag?: { id?: string; name?: string; color?: string } | null }> | null
   status?: string | null
   nextAction?: string | null
+  createdAt?: string | Date | null
+  completedAt?: string | Date | null
+  recurrenceRule?: string | null
 }
 
 export interface TaskCardProps {
@@ -171,6 +194,8 @@ export interface TaskCardProps {
   className?: string
   /** Ekstra badge (fx status) – vises øverst til højre */
   badge?: React.ReactNode
+  /** 'historik' = kun titel, beskrivelse, kunde, type, oprettet, afsluttet */
+  variant?: 'default' | 'historik'
 }
 
 function IconCheck() {
@@ -181,7 +206,7 @@ function IconCheck() {
   )
 }
 
-export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLevel, className, badge }: TaskCardProps) {
+export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLevel, className, badge, variant = 'default' }: TaskCardProps) {
   const desc = truncate(task.notes ?? task.nextAction ?? '', DESCRIPTION_MAX_LEN)
   const imp = task.importance ?? 0
   const urg = getEffectiveUrgency(task.urgency ?? 0, task.dueAt ?? null)
@@ -195,6 +220,92 @@ export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLev
           name,
           color: ['#8B5CF6', '#10B981', '#F59E0B', '#0EA5E9', '#EC4899'][i % 5],
         }))
+
+  if (variant === 'historik') {
+    const historikContent = (
+      <>
+        {isCompleting && (
+          <div
+            className="absolute inset-0 z-10 flex items-center justify-center rounded-xl2 bg-emerald-600/90"
+            style={{ animation: 'completionOverlay 0.5s ease-out forwards' }}
+            aria-hidden
+          >
+            <svg
+              className="w-16 h-16 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              style={{ animation: 'checkmarkPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both' }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        )}
+        <div className="mt-3">
+          <p className="text-base font-medium text-slate-100 leading-tight">{task.title ?? '(Uden titel)'}</p>
+          {desc && <p className="text-xs text-slate-400 mt-2 line-clamp-2">{desc}</p>}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-app-muted">
+          {task.type && (
+            <span className="flex items-center gap-1">
+              <IconFolder />
+              {TYPE_LABEL[task.type] ?? task.type}
+            </span>
+          )}
+          {task.customer?.name && (
+            <span className="flex items-center gap-1">
+              <IconCompany />
+              {task.customer.name}
+            </span>
+          )}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-app-muted">
+          <span className="flex items-center gap-1">
+            <IconCalendar />
+            Oprettet: {formatTimestamp(task.createdAt)}
+          </span>
+          {task.completedAt && (
+            <span className="flex items-center gap-1 text-emerald-400/90">
+              <IconClock />
+              Afsluttet: {formatTimestamp(task.completedAt)}
+            </span>
+          )}
+        </div>
+      </>
+    )
+    const baseClass = cn(
+      'relative block w-full min-w-0 text-left app-card-gradient rounded-xl2 p-4 shadow-card border border-white/5 transition-all duration-200 ease-out overflow-hidden',
+      greyedOutLevel === 'strong'
+        ? 'opacity-30 hover:opacity-45'
+        : greyedOutLevel === 'subtle'
+          ? 'opacity-75 hover:opacity-85'
+          : 'hover:shadow-hover hover:-translate-y-0.5 hover:border-white/10'
+    )
+    if (onClick) {
+      return (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('button')) return
+            onClick()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              if ((e.target as HTMLElement).closest('button')) return
+              onClick()
+            }
+          }}
+          className={cn(baseClass, 'cursor-pointer', className)}
+        >
+          {historikContent}
+        </div>
+      )
+    }
+    return <div className={cn(baseClass, className)}>{historikContent}</div>
+  }
 
   const content = (
     <>
@@ -247,6 +358,11 @@ export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLev
               {getDeadlineUrgency(task.dueAt) === 'overdue' && <span className="ml-1">⚠️</span>}
             </span>
           </>
+        )}
+        {task.recurrenceRule && (
+          <span className="flex items-center gap-1 text-app-muted" title="Gentages">
+            <IconRepeat />
+          </span>
         )}
         {badge}
         {onMarkDone && task.status !== 'done' && (

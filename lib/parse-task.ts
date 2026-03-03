@@ -2,7 +2,15 @@ import { prisma } from '@/lib/db'
 import { TaskStatus, TaskType } from '@prisma/client'
 import { logTaskEvent } from '@/lib/events'
 import { parseSmartInput } from '@/lib/ai/parser'
-import { computeUrgencyFromDeadline, getImportanceBoostFromType } from '@/lib/eisenhower'
+import {
+  computeUrgencyFromDeadline,
+  computeImportanceWithContext,
+  computeUrgencyWithContext,
+} from '@/lib/eisenhower'
+import {
+  getKeywordOffsets,
+  normalizePriorityFactors,
+} from '@/lib/priority-factors'
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz'
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
@@ -132,6 +140,7 @@ export async function runParseForTask(
   const userSettings = await prisma.userSettings.findUnique({
     where: { userId },
   })
+  const priorityFactors = normalizePriorityFactors(userSettings?.priorityFactors)
   const workHours = (userSettings?.workHours as Record<string, { start: string; end: string } | null> | null) ?? {
     mon: { start: '08:00', end: '16:00' },
     tue: { start: '08:00', end: '16:00' },
@@ -240,19 +249,6 @@ export async function runParseForTask(
       ? normalizeDueAt(result.dueAt)
       : null
 
-  let importance = result.importance ?? 50
-  let urgency: number
-  if (resolvedDueAt != null) {
-    urgency = Math.round(computeUrgencyFromDeadline(resolvedDueAt))
-  } else {
-    urgency = result.urgency ?? 50
-    if (customerId && matchedCustomer?.priority != null) {
-      const boost = (matchedCustomer.priority - 5) * 2
-      importance = Math.max(0, Math.min(100, importance + boost))
-      urgency = Math.max(0, Math.min(100, urgency + boost))
-    }
-  }
-
   const validTypes: TaskType[] = ['kunde', 'internt', 'salg', 'ledelse']
   const resolvedType: TaskType =
     result.type && validTypes.includes(result.type)
@@ -264,7 +260,26 @@ export async function runParseForTask(
     customerId = null
     matchedCustomer = null
   }
-  importance = Math.max(0, Math.min(100, importance + getImportanceBoostFromType(resolvedType)))
+
+  const kwOffsets = getKeywordOffsets(rawText, priorityFactors.keywordWeights)
+  const aiImportance = Math.max(0, Math.min(100, result.importance ?? 50))
+  const importance = computeImportanceWithContext(
+    aiImportance,
+    resolvedType,
+    matchedCustomer?.priority,
+    priorityFactors,
+    kwOffsets.importance
+  )
+  const urgency: number =
+    resolvedDueAt != null
+      ? Math.round(computeUrgencyFromDeadline(resolvedDueAt))
+      : computeUrgencyWithContext(
+          result.urgency ?? 50,
+          resolvedType,
+          matchedCustomer?.priority,
+          priorityFactors,
+          kwOffsets.urgency
+        )
 
   const updateData: Record<string, unknown> = {
     ...(title && { title }),
