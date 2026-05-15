@@ -187,6 +187,7 @@ export function AppDatePicker({
           <div
             ref={dropdownRef}
             data-app-select-list
+            data-app-date-picker
             className="fixed z-[100] rounded-lg border border-white/10 app-dropdown-gradient shadow-lg p-3 min-w-[18rem] animate-[dropdownIn_150ms_ease-out_forwards]"
             style={{ bottom: `calc(100vh - ${position.top}px)`, left: position.left }}
           >

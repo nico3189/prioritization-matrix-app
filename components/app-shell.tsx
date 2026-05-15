@@ -92,7 +92,7 @@ function IconChevronRight() {
 }
 
 const navItems = [
-  { href: '/today', label: 'Fokus opgaver', icon: IconStar, iconColor: 'text-amber-400' },
+  { href: '/today', label: 'Fokusopgaver', icon: IconStar, iconColor: 'text-amber-400' },
   { href: '/clarify', label: 'Kræver handling', icon: IconQuestion, iconColor: 'text-orange-400' },
   { href: '/alle-opgaver', label: 'Alle opgaver', icon: IconList, iconColor: 'text-sky-400' },
   { href: '/done', label: 'Udførte', icon: IconCheck, iconColor: 'text-emerald-400' },
@@ -355,11 +355,13 @@ export function AppShell({ user, children }: AppShellProps) {
       {/* Main content – margin-left så det ikke overlapper fixed sidebar */}
       <main
         className={cn(
-          'flex-1 min-w-0 p-4 pb-20 md:pb-8 md:p-8 max-w-7xl mx-auto w-full transition-[margin] duration-200 ease-out',
+          'flex-1 min-w-0 p-4 pb-20 md:pb-8 md:p-8 w-full transition-[margin] duration-200 ease-out',
           sidebarCollapsed ? 'md:ml-[64px]' : 'md:ml-[260px]'
         )}
       >
-        {children}
+        <div className="w-full max-w-screen-2xl mx-auto">
+          {children}
+        </div>
       </main>
 
       <AddTaskModal />

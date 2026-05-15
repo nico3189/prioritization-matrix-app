@@ -11,7 +11,9 @@ import {
   TaskListFiltersBar,
   useFilteredAndSortedTasks,
   useTaskListViewMode,
+  DEFAULT_TASK_LIST_FILTERS,
   type SortOption,
+  type TaskListFilters,
 } from '@/components/task-list-filters'
 
 function useAlleOpgaverTasks() {
@@ -25,11 +27,11 @@ export default function AlleOpgaverPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('priority')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
   const [viewMode, setViewMode] = useTaskListViewMode()
   const showToast = useToast()
   const { data: tasks = [], isLoading } = useAlleOpgaverTasks()
-  const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, searchQuery)
+  const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, filters)
 
   const markDone = useMarkTaskDone({
     onSuccess: () => {
@@ -55,8 +57,9 @@ export default function AlleOpgaverPage() {
           <TaskListFiltersBar
             sortBy={sortBy}
             onSortChange={setSortBy}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
+            filters={filters}
+            onFiltersChange={setFilters}
+            tasks={tasks}
             resultCount={filteredTasks.length}
             totalCount={tasks.length}
             viewMode={viewMode}

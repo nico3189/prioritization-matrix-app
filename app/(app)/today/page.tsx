@@ -7,13 +7,7 @@ import { TaskOverlay } from '@/components/task-overlay'
 import { TaskCard, type TaskCardTask } from '@/components/task-card'
 import { useMarkTaskDone } from '@/lib/use-mark-task-done'
 import { useToast } from '@/components/toast'
-import {
-  TaskListFiltersBar,
-  useFilteredAndSortedTasks,
-  useTaskListViewMode,
-  type SortOption,
-} from '@/components/task-list-filters'
-import { TaskTable } from '@/components/task-table'
+import { getScore, getEffectiveUrgency } from '@/lib/eisenhower'
 
 function useTodayTasks() {
   return useQuery({
@@ -22,12 +16,21 @@ function useTodayTasks() {
   })
 }
 
+function sortByPriority<T extends { importance?: number | null; urgency?: number | null; dueAt?: string | Date | null }>(
+  tasks: T[]
+): T[] {
+  return [...tasks].sort((a, b) => {
+    const impA = a.importance ?? 0
+    const impB = b.importance ?? 0
+    const urgA = getEffectiveUrgency(a.urgency ?? 0, a.dueAt ?? null)
+    const urgB = getEffectiveUrgency(b.urgency ?? 0, b.dueAt ?? null)
+    return getScore(impB, urgB) - getScore(impA, urgA)
+  })
+}
+
 export default function TodayPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [completingId, setCompletingId] = useState<string | null>(null)
-  const [sortBy, setSortBy] = useState<SortOption>('priority')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [viewMode, setViewMode] = useTaskListViewMode()
   const showToast = useToast()
   const markDone = useMarkTaskDone({
     onSuccess: () => {
@@ -36,60 +39,73 @@ export default function TodayPage() {
     },
   })
   const { data: tasks = [], isLoading } = useTodayTasks()
-  const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, searchQuery)
-  const displayTasks = useMemo(() => filteredTasks.slice(0, 4), [filteredTasks])
+  const sortedTasks = useMemo(() => sortByPriority(tasks), [tasks])
+  const displayTasks = useMemo(() => sortedTasks.slice(0, 4), [sortedTasks])
+  const [primaryTask, ...nextTasks] = displayTasks
 
   return (
-    <div>
+    <div className="max-w-2xl mx-auto">
       <h1 className="text-3xl font-semibold text-slate-100 mb-2">Fokusopgaver</h1>
-      <p className="text-xs text-app-muted mb-6">
-        {filteredTasks.length === 0
+      <p className="text-xs text-app-muted mb-8">
+        {tasks.length === 0
           ? 'Ingen opgaver.'
-          : `${displayTasks.length} fokusopgaver.`}
+          : `${displayTasks.length} fokusopgaver i rangorden.`}
       </p>
       {isLoading ? (
         <p className="text-sm text-app-muted">Henter...</p>
       ) : tasks.length === 0 ? (
-        <p className="text-sm text-slate-300">Ingen opgaver i dag. Tilføj en opgave ovenfor.</p>
+        <p className="text-sm text-slate-300">
+          Ingen opgaver i dag. Tilføj en opgave ovenfor.
+        </p>
       ) : (
-        <>
-          <TaskListFiltersBar
-            sortBy={sortBy}
-            onSortChange={setSortBy}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            resultCount={filteredTasks.length}
-            totalCount={tasks.length}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-          />
-          {viewMode === 'table' ? (
-            <TaskTable
-              tasks={displayTasks as TaskCardTask[]}
-              onTaskClick={(t) => setSelectedTaskId(t.id)}
-              onMarkDone={(t) => {
-                setCompletingId(t.id)
-                markDone.mutate(t.id)
-              }}
-              completingId={completingId}
-            />
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {displayTasks.map((task: TaskCardTask) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onClick={() => setSelectedTaskId(task.id)}
-                  onMarkDone={() => {
-                    setCompletingId(task.id)
-                    markDone.mutate(task.id)
-                  }}
-                  isCompleting={completingId === task.id}
-                />
-              ))}
-            </div>
+        <div className="space-y-8">
+          {primaryTask && (
+            <section>
+              <p className="text-xs font-medium text-app-muted uppercase tracking-wider mb-3">
+                Fokus nu
+              </p>
+              <TaskCard
+                task={primaryTask as TaskCardTask}
+                onClick={() => setSelectedTaskId((primaryTask as TaskCardTask).id)}
+                onMarkDone={() => {
+                  setCompletingId((primaryTask as TaskCardTask).id)
+                  markDone.mutate((primaryTask as TaskCardTask).id)
+                }}
+                isCompleting={completingId === (primaryTask as TaskCardTask).id}
+              />
+            </section>
           )}
-        </>
+
+          {nextTasks.length > 0 && (
+            <section>
+              <p className="text-xs font-medium text-app-muted uppercase tracking-wider mb-3">
+                Næste opgaver
+              </p>
+              <div className="grid grid-cols-1 gap-4">
+                {nextTasks.map((task, idx) => {
+                  const t = task as TaskCardTask
+                  const opacityClass = ['opacity-75', 'opacity-60', 'opacity-50'][idx] ?? 'opacity-60'
+                  return (
+                  <div
+                    key={t.id}
+                    className={`${opacityClass} hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200 ease-out rounded-xl2`}
+                  >
+                    <TaskCard
+                      task={t}
+                      onClick={() => setSelectedTaskId(t.id)}
+                      onMarkDone={() => {
+                        setCompletingId(t.id)
+                        markDone.mutate(t.id)
+                      }}
+                      isCompleting={completingId === t.id}
+                    />
+                  </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+        </div>
       )}
 
       <TaskOverlay

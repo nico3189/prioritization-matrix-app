@@ -9,7 +9,9 @@ import {
   TaskListFiltersBar,
   useFilteredAndSortedTasks,
   useTaskListViewMode,
+  DEFAULT_TASK_LIST_FILTERS,
   type SortOption,
+  type TaskListFilters,
 } from '@/components/task-list-filters'
 
 function useHistorikTasks() {
@@ -27,10 +29,10 @@ function useHistorikTasks() {
 export default function HistorikPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('newest')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
   const [viewMode, setViewMode] = useTaskListViewMode()
   const { data: tasks = [], isLoading, isError, error, refetch } = useHistorikTasks()
-  const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, searchQuery)
+  const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, filters)
 
   return (
     <div>
@@ -57,8 +59,9 @@ export default function HistorikPage() {
           <TaskListFiltersBar
             sortBy={sortBy}
             onSortChange={setSortBy}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
+            filters={filters}
+            onFiltersChange={setFilters}
+            tasks={tasks}
             resultCount={filteredTasks.length}
             totalCount={tasks.length}
             viewMode={viewMode}

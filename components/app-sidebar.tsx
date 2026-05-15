@@ -7,7 +7,7 @@ import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { href: '/today', label: 'Fokus opgaver' },
+  { href: '/today', label: 'Fokusopgaver' },
   { href: '/clarify', label: 'Kræver handling' },
   { href: '/alle-opgaver', label: 'Alle opgaver' },
   { href: '/done', label: 'Udførte' },
