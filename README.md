@@ -57,7 +57,7 @@ The Heroku MCP deploy failed with 401 (invalid credentials). Deploy manually:
      GOOGLE_CLIENT_ID="..." \
      GOOGLE_CLIENT_SECRET="..." \
      NEXTAUTH_SECRET="$(openssl rand -base64 32)" \
-     NEXTAUTH_URL="https://prioritization-matrix-app.herokuapp.com" \
+     NEXTAUTH_URL="https://prioritization-matrix-app-d588e59b39f7.herokuapp.com" \
      OPENAI_API_KEY="..." \
      -a prioritization-matrix-app
    ```
@@ -73,7 +73,9 @@ The Heroku MCP deploy failed with 401 (invalid credentials). Deploy manually:
    ```
 
 Ensure the Google OAuth redirect URI is set to:
-`https://prioritization-matrix-app.herokuapp.com/api/auth/callback/google`
+`https://prioritization-matrix-app-d588e59b39f7.herokuapp.com/api/auth/callback/google`
+
+MCP (Streamable HTTP): `https://prioritization-matrix-app-d588e59b39f7.herokuapp.com/api/mcp` med `Authorization: Bearer pm_...`.
 
 ### Hourly sync of urgency (optional)
 

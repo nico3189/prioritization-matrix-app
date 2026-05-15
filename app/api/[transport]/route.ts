@@ -137,7 +137,8 @@ const mcpHandler = createMcpHandler(
 		},
 	},
 	{
-		basePath: '/api/mcp',
+		// basePath + "/mcp" = streamable HTTP path. "/api/mcp" her gav "/api/mcp/mcp" → 404.
+		basePath: '/api',
 		verboseLogs: process.env.NODE_ENV === 'development',
 	}
 )

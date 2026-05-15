@@ -13,7 +13,7 @@
   "env": {
     "NEXTAUTH_URL": {
       "description": "Full app URL",
-      "value": "https://prioritization-matrix-app.herokuapp.com",
+      "value": "https://prioritization-matrix-app-d588e59b39f7.herokuapp.com",
       "required": true
     },
     "NEXTAUTH_SECRET": {
