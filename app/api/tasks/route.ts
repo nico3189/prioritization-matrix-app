@@ -5,8 +5,7 @@ import { getUserIdFromApiKey } from '@/lib/api-key'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { TaskStatus } from '@prisma/client'
-import { logTaskEvent } from '@/lib/events'
-import { runParseForTask } from '@/lib/parse-task'
+import { createTaskFromRawText } from '@/lib/services/tasks'
 
 const createSchema = z.object({
   rawText: z.string().min(1).max(10000),
@@ -84,27 +83,18 @@ export async function POST(req: Request) {
     const body = await req.json()
     const parsed = createSchema.safeParse(body)
     if (!parsed.success) return NextResponse.json(parsed.error.flatten(), { status: 400 })
-    const title = parsed.data.rawText.trim().split(/\n/)[0] || parsed.data.rawText.slice(0, 200)
-    const task = await prisma.task.create({
-      data: {
-        userId,
-        title,
-        notes: parsed.data.rawText.length > 500 ? parsed.data.rawText.slice(0, 2000) : parsed.data.rawText,
-        status: TaskStatus.inbox_raw,
-        parseStatus: 'pending',
-        ...(parsed.data.linkedEventId && { linkedEventId: parsed.data.linkedEventId }),
-        ...(parsed.data.linkedEventType && { linkedEventType: parsed.data.linkedEventType }),
-        ...(parsed.data.linkedEventTitle && { linkedEventTitle: parsed.data.linkedEventTitle }),
-        ...(parsed.data.linkedEventUrl != null && { linkedEventUrl: parsed.data.linkedEventUrl || null }),
-        ...(parsed.data.dueAt && { dueAt: new Date(parsed.data.dueAt) }),
-        ...(parsed.data.eventStartAt && { eventStartAt: new Date(parsed.data.eventStartAt) }),
-        ...(parsed.data.eventEndAt && { eventEndAt: new Date(parsed.data.eventEndAt) }),
+    const task = await createTaskFromRawText(
+      {
+        rawText: parsed.data.rawText,
+        linkedEventId: parsed.data.linkedEventId,
+        linkedEventType: parsed.data.linkedEventType,
+        linkedEventTitle: parsed.data.linkedEventTitle,
+        linkedEventUrl: parsed.data.linkedEventUrl,
+        dueAt: parsed.data.dueAt,
+        eventStartAt: parsed.data.eventStartAt,
+        eventEndAt: parsed.data.eventEndAt,
       },
-      include: { customer: true, delegatedTo: true },
-    })
-    await logTaskEvent(task.id, userId, 'created')
-    runParseForTask(task.id, userId).catch((err) =>
-      console.error('[POST /api/tasks] background parse failed:', err)
+      userId
     )
     return NextResponse.json(task)
   } catch (err) {
