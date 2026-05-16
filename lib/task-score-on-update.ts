@@ -1,22 +1,26 @@
 import { computeUrgencyFromDeadline } from '@/lib/eisenhower'
 
-export interface TaskScoreRecalcInput {
-	dueAt: Date | null
-	urgencyManuallyOverriddenAt: Date | null
+export interface DeadlineUrgencyRecalcResult {
+	urgency: number
+	clearManualOverride: boolean
 }
 
 /**
- * Når deadline ændres og hastighed ikke er manuelt låst,
- * genberegn urgency fra deadline (samme logik som sync-urgency).
+ * Når brugeren ændrer deadline (PATCH / MCP update_task) uden samtidig at
+ * sende urgency, genberegnes urgency fra den nye deadline — uanset om
+ * urgency tidligere var manuelt låst.
  */
-export function urgencyForDeadlineUpdate(
-	task: TaskScoreRecalcInput,
+export function computeUrgencyAfterDeadlineChange(
 	newDueAt: Date | null | undefined,
-	urgencyExplicitlySet: boolean
-): number | undefined {
-	if (urgencyExplicitlySet) return undefined
-	if (task.urgencyManuallyOverriddenAt) return undefined
-	if (newDueAt === undefined) return undefined
-	if (newDueAt == null) return undefined
-	return Math.round(computeUrgencyFromDeadline(newDueAt))
+	options: {
+		deadlineFieldSet: boolean
+		urgencyFieldSet: boolean
+	}
+): DeadlineUrgencyRecalcResult | null {
+	if (!options.deadlineFieldSet || options.urgencyFieldSet) return null
+	if (newDueAt == null) return null
+	return {
+		urgency: Math.round(computeUrgencyFromDeadline(newDueAt)),
+		clearManualOverride: true,
+	}
 }

@@ -22,7 +22,7 @@ import {
 	tagsFieldChanged,
 } from '@/lib/services/task-tags'
 import { resolveCustomerMatch } from '@/lib/resolve-customer'
-import { urgencyForDeadlineUpdate } from '@/lib/task-score-on-update'
+import { computeUrgencyAfterDeadlineChange } from '@/lib/task-score-on-update'
 
 export interface CreateTaskInput {
 	rawText: string
@@ -327,21 +327,19 @@ export async function updateTask(
 				? new Date(fields.deadline)
 				: null
 			: undefined
-	const autoUrgency = urgencyForDeadlineUpdate(
-		{
-			dueAt: task.dueAt,
-			urgencyManuallyOverriddenAt: task.urgencyManuallyOverriddenAt,
-		},
-		newDueAt,
-		fields.urgency !== undefined
-	)
-	if (autoUrgency !== undefined && autoUrgency !== task.urgency) {
-		data.urgency = autoUrgency
-		if (!changedFields.includes('deadline') && fields.deadline !== undefined) {
-			changedFields.push('deadline')
+	const deadlineRecalc = computeUrgencyAfterDeadlineChange(newDueAt, {
+		deadlineFieldSet: fields.deadline !== undefined,
+		urgencyFieldSet: fields.urgency !== undefined,
+	})
+	if (deadlineRecalc) {
+		data.urgency = deadlineRecalc.urgency
+		if (deadlineRecalc.clearManualOverride) {
+			data.urgencyManuallyOverriddenAt = null
 		}
-		if (!changedFields.includes('urgency')) {
-			changedFields.push('urgency')
+		if (deadlineRecalc.urgency !== task.urgency) {
+			if (!changedFields.includes('urgency')) {
+				changedFields.push('urgency')
+			}
 		}
 	}
 

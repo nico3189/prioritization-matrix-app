@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { TaskStatus, DurationBucket, TaskType, LinkedEventType } from '@prisma/client'
 import { logTaskEvent } from '@/lib/events'
 import { spawnRecurringNext } from '@/lib/recurrence'
-import { urgencyForDeadlineUpdate } from '@/lib/task-score-on-update'
+import { computeUrgencyAfterDeadlineChange } from '@/lib/task-score-on-update'
 
 const patchSchema = z.object({
   title: z.string().min(1).max(2000).optional(),
@@ -111,16 +111,15 @@ export async function PATCH(
     parsed.data.dueAt !== undefined
       ? (data.dueAt as Date | null)
       : undefined
-  const autoUrgency = urgencyForDeadlineUpdate(
-    {
-      dueAt: prevTask.dueAt,
-      urgencyManuallyOverriddenAt: prevTask.urgencyManuallyOverriddenAt,
-    },
-    newDueAt,
-    parsed.data.urgency !== undefined
-  )
-  if (autoUrgency !== undefined) {
-    data.urgency = autoUrgency
+  const deadlineRecalc = computeUrgencyAfterDeadlineChange(newDueAt, {
+    deadlineFieldSet: parsed.data.dueAt !== undefined,
+    urgencyFieldSet: parsed.data.urgency !== undefined,
+  })
+  if (deadlineRecalc) {
+    data.urgency = deadlineRecalc.urgency
+    if (deadlineRecalc.clearManualOverride) {
+      data.urgencyManuallyOverriddenAt = null
+    }
   }
   const updated = await prisma.task.update({
     where: { id },
