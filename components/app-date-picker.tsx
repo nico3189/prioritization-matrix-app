@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
   format,
@@ -103,26 +103,89 @@ export function AppDatePicker({
     }
   }, [isOpen])
 
+  const buildPendingISO = useCallback((): string | null => {
+    const base = selectedDay ?? toISO(value)
+    if (!base) return null
+    return toISOString(setMinutes(setHours(base, hour), minute))
+  }, [selectedDay, value, hour, minute])
+
+  const hasPendingChanges = useCallback((): boolean => {
+    const pending = buildPendingISO()
+    if (!pending) return value !== ''
+    return pending !== value
+  }, [buildPendingISO, value])
+
+  const resetDraftFromValue = useCallback(() => {
+    const d = toISO(value)
+    if (d) {
+      setViewDate(d)
+      setSelectedDay(d)
+      const h = d.getHours()
+      const m = d.getMinutes()
+      setHour(h)
+      setMinute(m)
+      setHourDisplay(String(h).padStart(2, '0'))
+      setMinuteDisplay(String(m).padStart(2, '0'))
+    } else {
+      setSelectedDay(null)
+    }
+  }, [value])
+
   useEffect(() => {
+    if (!isOpen) return
+
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node
       if (
-        !ref.current?.contains(target) &&
-        !dropdownRef.current?.contains(target)
+        ref.current?.contains(target) ||
+        dropdownRef.current?.contains(target)
       ) {
+        return
+      }
+      if (hasPendingChanges()) {
+        const base = selectedDay ?? toISO(value)
+        if (base) {
+          const next = setMinutes(setHours(base, hour), minute)
+          onChange(toISOString(next))
+        }
+      }
+      setIsOpen(false)
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const base = selectedDay ?? toISO(value)
+        if (!base) {
+          setIsOpen(false)
+          return
+        }
+        const next = setMinutes(setHours(base, hour), minute)
+        onChange(toISOString(next))
+        setIsOpen(false)
+      }
+      if (e.key === 'Escape') {
+        resetDraftFromValue()
         setIsOpen(false)
       }
     }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setIsOpen(false)
-    }
-    document.addEventListener('click', handleClickOutside)
-    document.addEventListener('keydown', handleEscape)
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.removeEventListener('click', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [])
+  }, [
+    isOpen,
+    selectedDay,
+    hour,
+    minute,
+    value,
+    onChange,
+    hasPendingChanges,
+    resetDraftFromValue,
+  ])
 
   const displayValue = value ? formatDisplay(value) : placeholder
 
@@ -149,6 +212,11 @@ export function AppDatePicker({
     }
     const next = setMinutes(setHours(base, hour), minute)
     onChange(toISOString(next))
+    setIsOpen(false)
+  }
+
+  const handleCancel = () => {
+    resetDraftFromValue()
     setIsOpen(false)
   }
 
@@ -288,7 +356,7 @@ export function AppDatePicker({
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-white/5">
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5">
             <button
               type="button"
               onClick={handleRyd}
@@ -303,13 +371,22 @@ export function AppDatePicker({
             >
               I dag
             </button>
-            <button
-              type="button"
-              onClick={handleConfirm}
-              className="text-sm text-app-accent hover:text-app-accent/80 font-medium transition-colors duration-200 ease-out"
-            >
-              Vælg
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="text-sm text-slate-300 hover:text-white transition-colors duration-200 ease-out"
+              >
+                Annullér
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium bg-app-accent text-white shadow-md hover:opacity-90 active:scale-95 transition-all duration-200 ease-out"
+              >
+                Vælg
+              </button>
+            </div>
           </div>
         </div>,
           document.body

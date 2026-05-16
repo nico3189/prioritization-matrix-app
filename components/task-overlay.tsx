@@ -427,6 +427,22 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   const [isClosing, setIsClosing] = useState(false)
   const actionsRef = useRef<HTMLDivElement>(null)
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const recurrenceLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const openRecurrenceSubmenu = () => {
+    if (recurrenceLeaveTimerRef.current) {
+      clearTimeout(recurrenceLeaveTimerRef.current)
+      recurrenceLeaveTimerRef.current = null
+    }
+    setRecurrenceSubmenuOpen(true)
+  }
+
+  const scheduleCloseRecurrenceSubmenu = () => {
+    recurrenceLeaveTimerRef.current = setTimeout(() => {
+      setRecurrenceSubmenuOpen(false)
+      recurrenceLeaveTimerRef.current = null
+    }, 150)
+  }
 
   const MODAL_CLOSE_MS = 180
 
@@ -443,6 +459,9 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   useEffect(() => {
     return () => {
       if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current)
+      if (recurrenceLeaveTimerRef.current) {
+        clearTimeout(recurrenceLeaveTimerRef.current)
+      }
     }
   }, [])
 
@@ -886,14 +905,17 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                           <li role="separator" className="my-1 border-t border-white/5" />
                           <li role="none" className="relative">
                           <div
-                            className="flex items-center"
-                            onMouseEnter={() => setRecurrenceSubmenuOpen(true)}
-                            onMouseLeave={() => setRecurrenceSubmenuOpen(false)}
+                            className="relative flex items-stretch"
+                            onMouseEnter={openRecurrenceSubmenu}
+                            onMouseLeave={scheduleCloseRecurrenceSubmenu}
                           >
                             <button
                               type="button"
                               role="menuitem"
-                              onClick={() => setRecurrenceSubmenuOpen((o) => !o)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setRecurrenceSubmenuOpen((o) => !o)
+                              }}
                               className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out flex items-center justify-between"
                             >
                               <span>Gentagelse</span>
@@ -913,7 +935,9 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                             {recurrenceSubmenuOpen && (
                               <ul
                                 role="menu"
-                                className="absolute right-full top-0 mr-0.5 min-w-[10rem] rounded-lg border border-white/10 app-dropdown-gradient shadow-lg py-1 z-[70] animate-[dropdownIn_150ms_ease-out_forwards]"
+                                onMouseEnter={openRecurrenceSubmenu}
+                                onMouseLeave={scheduleCloseRecurrenceSubmenu}
+                                className="absolute right-full top-0 min-w-[10rem] rounded-lg border border-white/10 app-dropdown-gradient shadow-lg py-1 z-[70] animate-[dropdownIn_150ms_ease-out_forwards] pl-1 -translate-x-1"
                               >
                                 {(['DAILY', 'WEEKLY', 'MONTHLY'] as const).map((rule) => {
                                   const label = rule === 'DAILY' ? 'Daglig' : rule === 'WEEKLY' ? 'Ugentlig' : 'Månedlig'
@@ -923,7 +947,9 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                                       <button
                                         type="button"
                                         role="menuitem"
-                                        onClick={() => {
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
                                           setActionsOpen(false)
                                           setRecurrenceSubmenuOpen(false)
                                           updateTask.mutate({ id: task.id, recurrenceRule: rule })
@@ -947,7 +973,9 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                                   <button
                                     type="button"
                                     role="menuitem"
-                                    onClick={() => {
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
                                       setActionsOpen(false)
                                       setRecurrenceSubmenuOpen(false)
                                       updateTask.mutate({ id: task.id, recurrenceRule: null })
