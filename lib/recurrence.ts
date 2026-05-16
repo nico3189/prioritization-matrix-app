@@ -157,7 +157,32 @@ export async function spawnRecurringNext(
 
 	const tagIds = task.taskTags?.map((tt) => tt.tagId) ?? []
 
-	const created = await prisma.task.create({
+	return prisma.$transaction(async (tx) => {
+		await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`recur:${task.id}`}))`
+
+		const existing = await tx.task.findFirst({
+			where: {
+				userId: task.userId,
+				recurrenceRule: rule,
+				title: task.title,
+				dueAt: nextDueAt,
+				status: {
+					in: [TaskStatus.qualified, TaskStatus.needs_clarification],
+				},
+			},
+		})
+		if (existing) {
+			return tx.task.findUniqueOrThrow({
+				where: { id: existing.id },
+				include: {
+					customer: true,
+					delegatedTo: true,
+					taskTags: { include: { tag: true } },
+				},
+			})
+		}
+
+		return tx.task.create({
 		data: {
 			userId: task.userId,
 			title: task.title,
@@ -184,12 +209,11 @@ export async function spawnRecurringNext(
 				},
 			}),
 		},
-		include: {
-			customer: true,
-			delegatedTo: true,
-			taskTags: { include: { tag: true } },
-		},
+			include: {
+				customer: true,
+				delegatedTo: true,
+				taskTags: { include: { tag: true } },
+			},
+		})
 	})
-
-	return created
 }
