@@ -2,7 +2,18 @@ import { createMcpHandler, withMcpAuth } from 'mcp-handler'
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import { z } from 'zod'
 import { verifyMcpBearer, getUserIdFromAuthInfo } from '@/lib/mcp-auth'
-import { createTaskFromRawText } from '@/lib/services/tasks'
+import {
+	mcpToolResult,
+	formatListTasksSummary,
+	formatGetTaskSummary,
+} from '@/lib/services/mcp-task-utils'
+import {
+	createTaskFromRawText,
+	listTasks,
+	getTask,
+	updateTask,
+	completeTask,
+} from '@/lib/services/tasks'
 
 const mcpHandler = createMcpHandler(
 	(server) => {
@@ -51,8 +62,23 @@ const mcpHandler = createMcpHandler(
 					limit: z.number().int().min(1).max(200).optional(),
 				},
 			},
-			async () => {
-				throw new Error('TODO: implementér list_tasks')
+			async (args, extra) => {
+				const userId = getUserIdFromAuthInfo(extra.authInfo)
+				const statusFilter = args.status ?? 'open'
+				const items = await listTasks(
+					{
+						status: statusFilter,
+						urgency: args.urgency,
+						type: args.type,
+						customer: args.customer,
+						search: args.search,
+						deadlineBefore: args.deadlineBefore,
+						limit: args.limit,
+					},
+					userId
+				)
+				const summary = formatListTasksSummary(items, statusFilter)
+				return mcpToolResult(summary, { tasks: items, count: items.length })
 			}
 		)
 
@@ -63,8 +89,10 @@ const mcpHandler = createMcpHandler(
 				description: 'Hent en enkelt opgave med alle felter.',
 				inputSchema: { id: z.string() },
 			},
-			async () => {
-				throw new Error('TODO: implementér get_task')
+			async ({ id }, extra) => {
+				const userId = getUserIdFromAuthInfo(extra.authInfo)
+				const detail = await getTask(id, userId)
+				return mcpToolResult(formatGetTaskSummary(detail), detail)
 			}
 		)
 
@@ -81,15 +109,42 @@ const mcpHandler = createMcpHandler(
 						urgency: z.enum(['akut', 'snart', 'normal', 'lav']).optional(),
 						type: z.string().optional(),
 						customer: z.string().optional(),
-						deadline: z.string().datetime().optional(),
-						duration: z.number().optional(),
+						deadline: z.string().datetime().nullable().optional(),
+						duration: z.number().nullable().optional(),
 						links: z.array(z.string().url()).optional(),
 						notes: z.string().optional(),
 					}),
 				},
 			},
-			async () => {
-				throw new Error('TODO: implementér update_task')
+			async ({ id, fields }, extra) => {
+				const userId = getUserIdFromAuthInfo(extra.authInfo)
+				const { detail, changedFields } = await updateTask(
+					id,
+					fields,
+					userId
+				)
+				const summary =
+					changedFields.length > 0
+						? `Opdateret: ${id}. Ændrede felter: ${changedFields.join(', ')}.`
+						: `Ingen ændringer for ${id} (felter havde allerede samme værdi).`
+				return mcpToolResult(summary, detail)
+			}
+		)
+
+		server.registerTool(
+			'complete_task',
+			{
+				title: 'Afslut opgave',
+				description: 'Marker en opgave som færdig.',
+				inputSchema: { id: z.string() },
+			},
+			async ({ id }, extra) => {
+				const userId = getUserIdFromAuthInfo(extra.authInfo)
+				const detail = await completeTask(id, userId)
+				return mcpToolResult(
+					`✅ Markeret færdig: ${detail.title}`,
+					detail
+				)
 			}
 		)
 
@@ -103,18 +158,6 @@ const mcpHandler = createMcpHandler(
 			},
 			async () => {
 				throw new Error('TODO: implementér reparse_task')
-			}
-		)
-
-		server.registerTool(
-			'complete_task',
-			{
-				title: 'Afslut opgave',
-				description: 'Marker en opgave som færdig.',
-				inputSchema: { id: z.string() },
-			},
-			async () => {
-				throw new Error('TODO: implementér complete_task')
 			}
 		)
 
@@ -137,7 +180,6 @@ const mcpHandler = createMcpHandler(
 		},
 	},
 	{
-		// basePath + "/mcp" = streamable HTTP path. "/api/mcp" her gav "/api/mcp/mcp" → 404.
 		basePath: '/api',
 		verboseLogs: process.env.NODE_ENV === 'development',
 	}
