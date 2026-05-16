@@ -2,6 +2,7 @@ import { createMcpHandler, withMcpAuth } from 'mcp-handler'
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import { z } from 'zod'
 import { verifyMcpBearer, getUserIdFromAuthInfo } from '@/lib/mcp-auth'
+import { getTaskUrl } from '@/lib/task-url'
 import {
 	mcpToolResult,
 	formatListTasksSummary,
@@ -13,6 +14,8 @@ import {
 	getTask,
 	updateTask,
 	completeTask,
+	addTagToTask,
+	removeTagFromTask,
 } from '@/lib/services/tasks'
 
 const mcpHandler = createMcpHandler(
@@ -39,7 +42,7 @@ const mcpHandler = createMcpHandler(
 					content: [
 						{
 							type: 'text',
-							text: `✅ Opgave oprettet (id: ${task.id})\nTitel: ${task.title}\nHastighed: ${task.urgency ?? '—'}\nType: ${task.type ?? '—'}`,
+							text: `✅ Opgave oprettet (id: ${task.id})\nLink: ${getTaskUrl(task.id)}\nTitel: ${task.title}\nHastighed: ${task.urgency ?? '—'}\nType: ${task.type ?? '—'}`,
 						},
 					],
 				}
@@ -113,6 +116,7 @@ const mcpHandler = createMcpHandler(
 						duration: z.number().nullable().optional(),
 						links: z.array(z.string().url()).optional(),
 						notes: z.string().optional(),
+						tags: z.array(z.string()).optional(),
 					}),
 				},
 			},
@@ -128,6 +132,46 @@ const mcpHandler = createMcpHandler(
 						? `Opdateret: ${id}. Ændrede felter: ${changedFields.join(', ')}.`
 						: `Ingen ændringer for ${id} (felter havde allerede samme værdi).`
 				return mcpToolResult(summary, detail)
+			}
+		)
+
+		server.registerTool(
+			'add_tag',
+			{
+				title: 'Tilføj tag',
+				description:
+					'Tilføj et tag til en opgave. Idempotent — hvis tag\'et allerede er på opgaven, returnér uden ændring. Brug når brugeren beder om at tilføje et enkelt tag uden at røre de andre.',
+				inputSchema: {
+					id: z.string(),
+					tag: z.string().min(1),
+				},
+			},
+			async ({ id, tag }, extra) => {
+				const userId = getUserIdFromAuthInfo(extra.authInfo)
+				const { detail, message } = await addTagToTask(id, tag, userId)
+				return mcpToolResult(message, detail)
+			}
+		)
+
+		server.registerTool(
+			'remove_tag',
+			{
+				title: 'Fjern tag',
+				description:
+					'Fjern et tag fra en opgave. Idempotent — hvis tag\'et ikke findes på opgaven, returnér uden ændring.',
+				inputSchema: {
+					id: z.string(),
+					tag: z.string().min(1),
+				},
+			},
+			async ({ id, tag }, extra) => {
+				const userId = getUserIdFromAuthInfo(extra.authInfo)
+				const { detail, message } = await removeTagFromTask(
+					id,
+					tag,
+					userId
+				)
+				return mcpToolResult(message, detail)
 			}
 		)
 

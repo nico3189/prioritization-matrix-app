@@ -13,6 +13,14 @@ import {
 	type McpTaskListItem,
 	type McpTaskDetail,
 } from '@/lib/services/mcp-task-utils'
+import {
+	addTagToTaskRecord,
+	getTaskTagNames,
+	normalizeTagNames,
+	removeTagFromTaskRecord,
+	replaceTaskTags,
+	tagsFieldChanged,
+} from '@/lib/services/task-tags'
 
 export interface CreateTaskInput {
 	rawText: string
@@ -44,6 +52,7 @@ export interface UpdateTaskFields {
 	duration?: number | null
 	links?: string[]
 	notes?: string
+	tags?: string[]
 }
 
 const taskIncludeList = {
@@ -302,14 +311,25 @@ export async function updateTask(
 		}
 	}
 
+	if (fields.tags !== undefined) {
+		const prev = getTaskTagNames(task)
+		const next = normalizeTagNames(fields.tags)
+		if (tagsFieldChanged(prev, next)) {
+			await replaceTaskTags(id, userId, next)
+			changedFields.push('tags')
+		}
+	}
+
 	if (changedFields.length === 0) {
 		return { detail: toMcpTaskDetail(task), changedFields: [] }
 	}
 
-	await prisma.task.update({
-		where: { id },
-		data,
-	})
+	if (Object.keys(data).length > 0) {
+		await prisma.task.update({
+			where: { id },
+			data,
+		})
+	}
 
 	const updated = await findTaskForUser(id, userId)
 	if (!updated) throw new Error(`Task not found: ${id}`)
@@ -335,6 +355,34 @@ export async function completeTask(
 	const updated = await findTaskForUser(id, userId)
 	if (!updated) throw new Error(`Task not found: ${id}`)
 	return toMcpTaskDetail(updated)
+}
+
+export async function addTagToTask(
+	id: string,
+	tag: string,
+	userId: string
+): Promise<{ detail: McpTaskDetail; message: string }> {
+	const task = await findTaskForUser(id, userId)
+	if (!task) throw new Error(`Task not found: ${id}`)
+
+	const result = await addTagToTaskRecord(id, userId, task, tag)
+	const updated = await findTaskForUser(id, userId)
+	if (!updated) throw new Error(`Task not found: ${id}`)
+	return { detail: toMcpTaskDetail(updated), message: result.message }
+}
+
+export async function removeTagFromTask(
+	id: string,
+	tag: string,
+	userId: string
+): Promise<{ detail: McpTaskDetail; message: string }> {
+	const task = await findTaskForUser(id, userId)
+	if (!task) throw new Error(`Task not found: ${id}`)
+
+	const result = await removeTagFromTaskRecord(id, task, tag)
+	const updated = await findTaskForUser(id, userId)
+	if (!updated) throw new Error(`Task not found: ${id}`)
+	return { detail: toMcpTaskDetail(updated), message: result.message }
 }
 
 export async function reparseTask(_id: string) {

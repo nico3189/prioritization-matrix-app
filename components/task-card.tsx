@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils'
 import { getScore, getEffectiveUrgency } from '@/lib/eisenhower'
+import { CopyTaskLinkButton } from '@/components/copy-task-link-button'
 
 const DESCRIPTION_MAX_LEN = 140
 
@@ -187,6 +188,10 @@ export interface TaskCardProps {
   task: TaskCardTask
   onClick?: () => void
   onMarkDone?: () => void
+  /** Vis kopier-link-knap (til venstre for done) */
+  showCopyLink?: boolean
+  /** Kaldes efter link er kopieret til udklipsholder */
+  onCopyLink?: (url: string) => void
   /** Viser success-overlay med checkmark (bruges når opgave lige er markeret udført) */
   isCompleting?: boolean
   /** Nedtoningsniveau: 'subtle' = lidt, 'strong' = meget (fx for Today's kø-opgaver) */
@@ -206,7 +211,18 @@ function IconCheck() {
   )
 }
 
-export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLevel, className, badge, variant = 'default' }: TaskCardProps) {
+export function TaskCard({
+  task,
+  onClick,
+  onMarkDone,
+  showCopyLink = true,
+  onCopyLink,
+  isCompleting,
+  greyedOutLevel,
+  className,
+  badge,
+  variant = 'default',
+}: TaskCardProps) {
   const desc = truncate(task.notes ?? task.nextAction ?? '', DESCRIPTION_MAX_LEN)
   const imp = task.importance ?? 0
   const urg = getEffectiveUrgency(task.urgency ?? 0, task.dueAt ?? null)
@@ -242,7 +258,16 @@ export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLev
             </svg>
           </div>
         )}
-        <div className="mt-3">
+        {showCopyLink && (
+          <div className="absolute top-3 right-3 z-[1]">
+            <CopyTaskLinkButton
+              taskId={task.id}
+              onCopied={onCopyLink}
+              className="p-1.5"
+            />
+          </div>
+        )}
+        <div className="mt-3 pr-8">
           <p className="text-base font-medium text-slate-100 leading-tight">{task.title ?? '(Uden titel)'}</p>
           {desc && <p className="text-xs text-slate-400 mt-2 line-clamp-2">{desc}</p>}
         </div>
@@ -365,19 +390,26 @@ export function TaskCard({ task, onClick, onMarkDone, isCompleting, greyedOutLev
           </span>
         )}
         {badge}
-        {onMarkDone && task.status !== 'done' && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              onMarkDone()
-            }}
-            className="ml-auto shrink-0 p-2 rounded-lg bg-emerald-700/80 text-white hover:bg-emerald-600 transition-colors duration-200 ease-out active:scale-95"
-            aria-label="Marker opgave som udført"
-          >
-            <IconCheck />
-          </button>
+        {(showCopyLink || (onMarkDone && task.status !== 'done')) && (
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {showCopyLink && (
+              <CopyTaskLinkButton taskId={task.id} onCopied={onCopyLink} />
+            )}
+            {onMarkDone && task.status !== 'done' && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onMarkDone()
+                }}
+                className="p-2 rounded-lg bg-emerald-700/80 text-white hover:bg-emerald-600 transition-colors duration-200 ease-out active:scale-95"
+                aria-label="Marker opgave som udført"
+              >
+                <IconCheck />
+              </button>
+            )}
+          </div>
         )}
       </div>
       <div className="mt-3">

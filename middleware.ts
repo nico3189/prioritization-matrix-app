@@ -5,5 +5,13 @@ export default withAuth({
 })
 
 export const config = {
-  matcher: ['/historik/:path*', '/today/:path*', '/alle-opgaver/:path*', '/clarify/:path*', '/calendar/:path*', '/settings/:path*'],
+  matcher: [
+    '/historik/:path*',
+    '/today/:path*',
+    '/alle-opgaver/:path*',
+    '/tasks/:path*',
+    '/clarify/:path*',
+    '/calendar/:path*',
+    '/settings/:path*',
+  ],
 }

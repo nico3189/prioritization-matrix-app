@@ -6,6 +6,7 @@ import {
 	type Task,
 	type Tag,
 } from '@prisma/client'
+import { getTaskUrl } from '@/lib/task-url'
 
 export type McpUrgencyLabel = 'akut' | 'snart' | 'normal' | 'lav'
 export type McpTaskStatus = 'open' | 'done'
@@ -100,6 +101,7 @@ export function getCompletedAt(
 
 export interface McpTaskListItem {
 	id: string
+	url: string
 	title: string | null
 	urgency: McpUrgencyLabel | null
 	type: string | null
@@ -113,6 +115,7 @@ export interface McpTaskListItem {
 export function toMcpListItem(task: TaskWithRelations): McpTaskListItem {
 	return {
 		id: task.id,
+		url: getTaskUrl(task.id),
 		title: task.title,
 		urgency: urgencyScoreToLabel(task.urgency),
 		type: task.type,
@@ -135,7 +138,6 @@ export interface McpTaskDetail extends McpTaskListItem {
 	canDelegate: boolean
 	nextAction: string | null
 	parseStatus: string | null
-	url: string | null
 	links: string[]
 	tag: string | null
 	tags: string[]
@@ -168,7 +170,6 @@ export function toMcpTaskDetail(task: TaskWithRelations): McpTaskDetail {
 		canDelegate: task.canDelegate,
 		nextAction: task.nextAction,
 		parseStatus: task.parseStatus,
-		url: task.url,
 		links,
 		tag: task.tag,
 		tags,
@@ -190,7 +191,7 @@ export function formatGetTaskSummary(task: McpTaskDetail): string {
 	if (task.type) parts.push(task.type)
 	if (task.customer) parts.push(`kunde: ${task.customer}`)
 	const paren = parts.length > 0 ? ` (${parts.join(', ')})` : ''
-	const lines = [`"${task.title}"${paren}`]
+	const lines = [`"${task.title}"${paren}`, `Link: ${task.url}`]
 	const meta: string[] = []
 	if (task.deadline) {
 		meta.push(`Deadline: ${task.deadline.slice(0, 10)}`)

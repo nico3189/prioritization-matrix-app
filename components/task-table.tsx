@@ -3,6 +3,7 @@
 import { cn } from '@/lib/utils'
 import { getScore, getEffectiveUrgency } from '@/lib/eisenhower'
 import type { TaskCardTask } from '@/components/task-card'
+import { CopyTaskLinkButton } from '@/components/copy-task-link-button'
 
 const DURATION_LABEL: Record<string, string> = {
   LT15: '<15 min',
@@ -155,6 +156,8 @@ export interface TaskTableProps {
   getBadge?: (task: TaskCardTask) => React.ReactNode
   /** 'historik' = kun titel, beskrivelse, kunde, type, oprettet, afsluttet */
   variant?: 'default' | 'historik'
+  showCopyLink?: boolean
+  onCopyLink?: (url: string) => void
 }
 
 export function TaskTable({
@@ -164,7 +167,10 @@ export function TaskTable({
   completingId,
   getBadge,
   variant = 'default',
+  showCopyLink = true,
+  onCopyLink,
 }: TaskTableProps) {
+  const showActions = showCopyLink || !!onMarkDone
   const rowClass =
     'border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors duration-150 cursor-pointer'
   const cellClass = 'px-2 py-2 text-xs'
@@ -206,6 +212,9 @@ export function TaskTable({
                   Afsluttet
                 </span>
               </th>
+              {showActions && (
+                <th className={cn(thClass, 'w-16')} aria-label="Handlinger" />
+              )}
             </tr>
           </thead>
           <tbody>
@@ -232,6 +241,23 @@ export function TaskTable({
                 <td className={cn(cellClass, 'whitespace-nowrap', task.completedAt ? 'text-emerald-400/90' : 'text-app-muted')}>
                   {task.completedAt ? formatTimestamp(task.completedAt) : '–'}
                 </td>
+                {showActions && (
+                  <td
+                    className={cn(cellClass, 'w-16')}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-end gap-0.5">
+                      {showCopyLink && (
+                        <CopyTaskLinkButton
+                          taskId={task.id}
+                          onCopied={onCopyLink}
+                          className="p-1.5"
+                          iconClassName="w-3.5 h-3.5"
+                        />
+                      )}
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -287,8 +313,8 @@ export function TaskTable({
                 Tags
               </span>
             </th>
-            {onMarkDone && (
-              <th className={cn(thClass, 'w-10')} aria-label="Handlinger" />
+            {showActions && (
+              <th className={cn(thClass, 'w-16')} aria-label="Handlinger" />
             )}
           </tr>
         </thead>
@@ -364,25 +390,35 @@ export function TaskTable({
                     '–'
                   )}
                 </td>
-                {onMarkDone && task.status !== 'done' && (
+                {showActions && (
                   <td
-                    className={cn(cellClass, 'w-10')}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onMarkDone(task)
-                    }}
+                    className={cn(cellClass, 'w-16')}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <button
-                      type="button"
-                      className="p-1.5 rounded-md bg-emerald-700/80 text-white hover:bg-emerald-600 transition-colors duration-200 active:scale-95"
-                      aria-label="Marker opgave som udført"
-                    >
-                      {completingId === task.id ? (
-                        <span className="inline-block w-3.5 h-3.5 border-2 border-white/60 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <IconCheck />
+                    <div className="flex items-center justify-end gap-0.5">
+                      {showCopyLink && (
+                        <CopyTaskLinkButton
+                          taskId={task.id}
+                          onCopied={onCopyLink}
+                          className="p-1.5"
+                          iconClassName="w-3.5 h-3.5"
+                        />
                       )}
-                    </button>
+                      {onMarkDone && task.status !== 'done' && (
+                        <button
+                          type="button"
+                          onClick={() => onMarkDone(task)}
+                          className="p-1.5 rounded-md bg-emerald-700/80 text-white hover:bg-emerald-600 transition-colors duration-200 active:scale-95"
+                          aria-label="Marker opgave som udført"
+                        >
+                          {completingId === task.id ? (
+                            <span className="inline-block w-3.5 h-3.5 border-2 border-white/60 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <IconCheck />
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 )}
               </tr>
