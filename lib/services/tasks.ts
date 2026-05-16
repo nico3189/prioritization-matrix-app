@@ -21,6 +21,8 @@ import {
 	replaceTaskTags,
 	tagsFieldChanged,
 } from '@/lib/services/task-tags'
+import { resolveCustomerMatch } from '@/lib/resolve-customer'
+import { urgencyForDeadlineUpdate } from '@/lib/task-score-on-update'
 
 export interface CreateTaskInput {
 	rawText: string
@@ -263,16 +265,15 @@ export async function updateTask(
 	if (fields.customer !== undefined) {
 		let customerId: string | null = null
 		if (fields.customer) {
-			const cust = await prisma.customer.findFirst({
-				where: {
-					userId,
-					name: { equals: fields.customer.trim(), mode: 'insensitive' },
-				},
+			const customers = await prisma.customer.findMany({
+				where: { userId },
+				select: { id: true, name: true, code: true },
 			})
-			if (!cust) {
+			const match = resolveCustomerMatch(fields.customer, customers)
+			if (!match) {
 				throw new Error(`Kunde ikke fundet: ${fields.customer}`)
 			}
-			customerId = cust.id
+			customerId = match.id
 		}
 		if (customerId !== task.customerId) {
 			data.customer = customerId
@@ -317,6 +318,30 @@ export async function updateTask(
 		if (tagsFieldChanged(prev, next)) {
 			await replaceTaskTags(id, userId, next)
 			changedFields.push('tags')
+		}
+	}
+
+	const newDueAt =
+		fields.deadline !== undefined
+			? fields.deadline
+				? new Date(fields.deadline)
+				: null
+			: undefined
+	const autoUrgency = urgencyForDeadlineUpdate(
+		{
+			dueAt: task.dueAt,
+			urgencyManuallyOverriddenAt: task.urgencyManuallyOverriddenAt,
+		},
+		newDueAt,
+		fields.urgency !== undefined
+	)
+	if (autoUrgency !== undefined && autoUrgency !== task.urgency) {
+		data.urgency = autoUrgency
+		if (!changedFields.includes('deadline') && fields.deadline !== undefined) {
+			changedFields.push('deadline')
+		}
+		if (!changedFields.includes('urgency')) {
+			changedFields.push('urgency')
 		}
 	}
 

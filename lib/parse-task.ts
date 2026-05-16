@@ -11,6 +11,15 @@ import {
   getKeywordOffsets,
   normalizePriorityFactors,
 } from '@/lib/priority-factors'
+import {
+  extractExplicitCustomerFromText,
+  resolveCustomerMatch,
+} from '@/lib/resolve-customer'
+import {
+  extractDelegationQueryFromText,
+  resolveTeamMemberMatch,
+  teamMemberMentionedInText,
+} from '@/lib/resolve-team-member'
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz'
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
@@ -209,30 +218,37 @@ export async function runParseForTask(
 
   let customerId: string | null = null
   let matchedCustomer: (typeof customers)[number] | null = null
-  if (result.customer) {
-    const q = result.customer.trim().toLowerCase()
-    const match = customers.find(
-      (c) =>
-        c.name.toLowerCase() === q ||
-        (c.code && c.code.toLowerCase() === q)
-    )
+  const explicitCustomer = extractExplicitCustomerFromText(rawText)
+  const customerQueries = [explicitCustomer, result.customer]
+    .filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
+  for (const q of customerQueries) {
+    const match = resolveCustomerMatch(q, customers)
     if (match) {
       customerId = match.id
-      matchedCustomer = match
+      matchedCustomer = customers.find((c) => c.id === match.id) ?? null
+      break
     }
   }
+
   let delegatedToId: string | null = null
   let matchedTeamMember: (typeof teamMembers)[number] | null = null
-  if (result.delegatedTo) {
-    const q = result.delegatedTo.trim().toLowerCase()
-    const match = teamMembers.find(
-      (t) =>
-        t.name.toLowerCase() === q ||
-        (t.code && t.code.toLowerCase() === q)
-    )
-    if (match) {
+  const explicitDelegate = extractDelegationQueryFromText(rawText)
+  const delegateQueries = [explicitDelegate, result.delegatedTo]
+    .filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
+  for (const q of delegateQueries) {
+    const match = resolveTeamMemberMatch(q, teamMembers)
+    if (match && teamMemberMentionedInText(match, rawText)) {
       delegatedToId = match.id
-      matchedTeamMember = match
+      matchedTeamMember = teamMembers.find((t) => t.id === match.id) ?? null
+      break
+    }
+  }
+  if (result.delegatedTo?.trim() && !delegatedToId) {
+    const aiMatch = resolveTeamMemberMatch(result.delegatedTo, teamMembers)
+    if (aiMatch) {
+      console.warn(
+        `[parse-task] Rejected hallucinated delegate "${result.delegatedTo}" for task ${taskId}`
+      )
     }
   }
   const extractedUrl =
