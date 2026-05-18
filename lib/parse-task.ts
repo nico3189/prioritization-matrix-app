@@ -319,7 +319,12 @@ export async function runParseForTask(
     ...(extractedUrl && { url: extractedUrl }),
   }
   const hasDuration = Boolean(result.durationBucket)
-  const newStatus = hasDuration ? TaskStatus.qualified : TaskStatus.needs_clarification
+  const parkOnUdviklingsliste = result.parkOnUdviklingsliste === true
+  const newStatus = parkOnUdviklingsliste
+    ? TaskStatus.udvikling
+    : hasDuration
+      ? TaskStatus.qualified
+      : TaskStatus.needs_clarification
 
   await prisma.task.update({
     where: { id: taskId },

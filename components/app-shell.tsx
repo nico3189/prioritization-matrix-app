@@ -42,6 +42,14 @@ function IconList() {
   )
 }
 
+function IconLightbulb() {
+  return (
+    <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+    </svg>
+  )
+}
+
 function IconCheck() {
   return (
     <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -95,6 +103,7 @@ const navItems = [
   { href: '/today', label: 'Fokusopgaver', icon: IconStar, iconColor: 'text-amber-400' },
   { href: '/clarify', label: 'Kræver handling', icon: IconQuestion, iconColor: 'text-orange-400' },
   { href: '/alle-opgaver', label: 'Alle opgaver', icon: IconList, iconColor: 'text-sky-400' },
+  { href: '/udvikling', label: 'Udvikling', icon: IconLightbulb, iconColor: 'text-violet-400' },
   { href: '/done', label: 'Udførte', icon: IconCheck, iconColor: 'text-emerald-400' },
   { href: '/calendar', label: 'Kalender', icon: IconCalendar, iconColor: 'text-sky-400' },
 ]

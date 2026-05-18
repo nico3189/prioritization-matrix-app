@@ -725,6 +725,24 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
     )
   }
 
+  const handleToggleUdviklingsliste = () => {
+    if (!task || task.status === 'done') return
+    const isOnUdvikling = task.status === 'udvikling'
+    setActionsOpen(false)
+    updateTask.mutate(
+      { id: task.id, status: isOnUdvikling ? 'qualified' : 'udvikling' },
+      {
+        onSuccess: () => {
+          showToast(
+            isOnUdvikling
+              ? 'Opgave tilbage på opgavelisten'
+              : 'Opgave på udviklingslisten'
+          )
+        },
+      }
+    )
+  }
+
   if (!taskId) return null
 
   return (
@@ -900,6 +918,26 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                           Genberegn hastegrad og vigtighed
                         </button>
                       </li>
+                      {task.status !== 'done' && (
+                        <li role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={handleToggleUdviklingsliste}
+                            disabled={updateTask.isPending}
+                            className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50 flex items-center gap-2"
+                          >
+                            {task.status === 'udvikling' ? (
+                              <svg className="w-4 h-4 text-app-accent shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            ) : (
+                              <span className="w-4 shrink-0" aria-hidden />
+                            )}
+                            På udviklingslisten
+                          </button>
+                        </li>
+                      )}
                       {task.status !== 'done' && (
                         <>
                           <li role="separator" className="my-1 border-t border-white/5" />

@@ -9,6 +9,7 @@ export const config = {
     '/historik/:path*',
     '/today/:path*',
     '/alle-opgaver/:path*',
+    '/udvikling/:path*',
     '/tasks/:path*',
     '/clarify/:path*',
     '/calendar/:path*',

@@ -10,6 +10,7 @@ const navItems = [
   { href: '/today', label: 'Fokusopgaver' },
   { href: '/clarify', label: 'Kræver handling' },
   { href: '/alle-opgaver', label: 'Alle opgaver' },
+  { href: '/udvikling', label: 'Udvikling' },
   { href: '/done', label: 'Udførte' },
   { href: '/calendar', label: 'Kalender' },
 ]

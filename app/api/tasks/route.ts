@@ -38,6 +38,9 @@ export async function GET(req: Request) {
       ]
       delete where.status
     }
+    if (view === 'udvikling') {
+      where.status = TaskStatus.udvikling
+    }
     if (view === 'matrix') where.status = { in: [TaskStatus.qualified, TaskStatus.needs_clarification] }
     const tasks = await prisma.task.findMany({
       where,

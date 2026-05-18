@@ -31,6 +31,7 @@ const parserOutputSchema = z.object({
   nextAction: z.string().optional().nullable(),
   tags: z.array(z.string()).max(4).optional(),
   url: z.string().optional().nullable(),
+  parkOnUdviklingsliste: z.boolean().optional(),
 })
 
 export type ParserOutput = z.infer<typeof parserOutputSchema>
@@ -85,6 +86,11 @@ tags: Tilføj 1-4 korte, relevante tags som array af strenge. Tags skal beskrive
 
 url: Hvis rawText indeholder en URL (fx https://..., http://...), udtræk den og returnér i url-feltet. Brug den første/mest relevante URL hvis flere findes. Returnér den fulde URL som den står i teksten.
 
+parkOnUdviklingsliste (boolean): Skal opgaven parkeres på udviklingslisten (idéer/forbedring — ikke dagens to-do)?
+- true: idé, inspiration, "god idé at…", processoptimering uden konkret deadline, "når der er tid", brainstorm, "måske", "overvej om…" uden commit.
+- false: eksplicit deadline, "i dag", "skal gøres", haster, kundelevering, konkret handling nu/snart, delegation med klar opgave.
+- VIGTIG: Ved tvivl → altid false (primær to-do-liste). Parkér kun når sproget tydeligt peger på idé/udvikling/senere.
+
 Returnér kun gyldig JSON, ingen markdown.
 
 Hvis overrideExamples er angivet: Brugeren har tidligere rettet lignende opgaver. Vægt disse eksempler HØJT – brug samme mønster for type, durationBucket, tags osv. når rawText ligner.`
@@ -124,7 +130,7 @@ linkedEvent (kalenderbegivenhed denne task stammer fra – brug til type/kunde-k
 ${workHoursStr}
 ${tagNamesStr ? tagNamesStr + '\n' : ''}${blacklistStr ? blacklistStr + '\n' : ''}${overrideStr}
 
-Return strict JSON with: title (kun kort præcis handling, 1 linje), type (REQUIRED: kunde|internt|salg|ledelse), durationBucket (only: LT15 | M15_30 | M30_60 | GT60), customer, canDelegate, delegatedTo, linkedEventId, linkedEventType, dueAt (ISO), importance (0-100), urgency (0-100), quadrant (Q1-Q4), score, nextAction, tags (array of 1-4 relevante tags), url (hvis URL findes i rawText), needsMoreInfo, overallConfidence, suggestions, matches.`
+Return strict JSON with: title (kun kort præcis handling, 1 linje), type (REQUIRED: kunde|internt|salg|ledelse), durationBucket (only: LT15 | M15_30 | M30_60 | GT60), customer, canDelegate, delegatedTo, linkedEventId, linkedEventType, dueAt (ISO), importance (0-100), urgency (0-100), quadrant (Q1-Q4), score, nextAction, tags (array of 1-4 relevante tags), url (hvis URL findes i rawText), parkOnUdviklingsliste (boolean), needsMoreInfo, overallConfidence, suggestions, matches.`
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -164,6 +170,9 @@ Return strict JSON with: title (kun kort præcis handling, 1 linje), type (REQUI
       if (tagStrings.length > 0) safe.tags = tagStrings
     }
     if (typeof obj.url === 'string' && obj.url.trim().length > 0) safe.url = obj.url.trim()
+    if (typeof obj.parkOnUdviklingsliste === 'boolean') {
+      safe.parkOnUdviklingsliste = obj.parkOnUdviklingsliste
+    }
     return safe
   } catch {
     return {}

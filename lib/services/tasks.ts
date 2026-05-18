@@ -137,7 +137,7 @@ export async function listTasks(
 	const where: Prisma.TaskWhereInput = { userId }
 
 	if (statusFilter === 'open') {
-		where.status = { not: TaskStatus.done }
+		where.status = { notIn: [TaskStatus.done, TaskStatus.udvikling] }
 	} else if (statusFilter === 'done') {
 		where.status = TaskStatus.done
 	}
