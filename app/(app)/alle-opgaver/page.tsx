@@ -28,10 +28,16 @@ export default function AlleOpgaverPage() {
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('priority')
   const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
+  const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useTaskListViewMode()
   const showToast = useToast()
   const { data: tasks = [], isLoading } = useAlleOpgaverTasks()
-  const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, filters)
+  const filteredTasks = useFilteredAndSortedTasks(
+    tasks,
+    sortBy,
+    filters,
+    searchQuery
+  )
 
   const markDone = useMarkTaskDone({
     onSuccess: () => {
@@ -59,6 +65,8 @@ export default function AlleOpgaverPage() {
             onSortChange={setSortBy}
             filters={filters}
             onFiltersChange={setFilters}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
             tasks={tasks}
             resultCount={filteredTasks.length}
             totalCount={tasks.length}

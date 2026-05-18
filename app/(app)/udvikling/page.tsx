@@ -30,10 +30,16 @@ export default function UdviklingPage() {
 	const [filters, setFilters] = useState<TaskListFilters>(
 		DEFAULT_TASK_LIST_FILTERS
 	)
+	const [searchQuery, setSearchQuery] = useState('')
 	const [viewMode, setViewMode] = useTaskListViewMode()
 	const showToast = useToast()
 	const { data: tasks = [], isLoading } = useUdviklingTasks()
-	const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, filters)
+	const filteredTasks = useFilteredAndSortedTasks(
+		tasks,
+		sortBy,
+		filters,
+		searchQuery
+	)
 
 	const markDone = useMarkTaskDone({
 		onSuccess: () => {
@@ -66,6 +72,8 @@ export default function UdviklingPage() {
 						onSortChange={setSortBy}
 						filters={filters}
 						onFiltersChange={setFilters}
+						searchQuery={searchQuery}
+						onSearchChange={setSearchQuery}
 						tasks={tasks}
 						resultCount={filteredTasks.length}
 						totalCount={tasks.length}

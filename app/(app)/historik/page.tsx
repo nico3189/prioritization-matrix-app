@@ -30,9 +30,15 @@ export default function HistorikPage() {
   const router = useRouter()
   const [sortBy, setSortBy] = useState<SortOption>('newest')
   const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
+  const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useTaskListViewMode()
   const { data: tasks = [], isLoading, isError, error, refetch } = useHistorikTasks()
-  const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, filters)
+  const filteredTasks = useFilteredAndSortedTasks(
+    tasks,
+    sortBy,
+    filters,
+    searchQuery
+  )
 
   return (
     <div>
@@ -61,6 +67,8 @@ export default function HistorikPage() {
             onSortChange={setSortBy}
             filters={filters}
             onFiltersChange={setFilters}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
             tasks={tasks}
             resultCount={filteredTasks.length}
             totalCount={tasks.length}

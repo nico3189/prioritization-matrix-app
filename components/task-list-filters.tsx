@@ -156,6 +156,135 @@ function taskMatchesFilters<T extends TaskForFilter>(task: T, filters: TaskListF
   return true
 }
 
+export type SearchPrefix =
+  | 'kunde'
+  | 'tag'
+  | 'titel'
+  | 'noter'
+  | 'type'
+  | 'delegeret'
+  | 'url'
+
+export const SEARCH_PREFIXES: { key: SearchPrefix; label: string }[] = [
+  { key: 'kunde', label: 'Kunde (navn eller kode)' },
+  { key: 'tag', label: 'Tag' },
+  { key: 'titel', label: 'Titel' },
+  { key: 'noter', label: 'Noter' },
+  { key: 'type', label: 'Type (kunde, internt, salg, ledelse)' },
+  { key: 'delegeret', label: 'Delegeret til' },
+  { key: 'url', label: 'URL' },
+]
+
+export interface ParsedSearch {
+  prefixFilters: Array<{ key: SearchPrefix; value: string }>
+  generalTerms: string[]
+}
+
+export function parseSearchQuery(query: string): ParsedSearch {
+  const trimmed = query.trim()
+  if (!trimmed) return { prefixFilters: [], generalTerms: [] }
+  const prefixKeys = SEARCH_PREFIXES.map((p) => p.key)
+  const prefixFilters: Array<{ key: SearchPrefix; value: string }> = []
+  const generalTerms: string[] = []
+  const tokens = trimmed.split(/\s+/)
+  for (const token of tokens) {
+    const colonIdx = token.indexOf(':')
+    if (colonIdx > 0) {
+      const key = token.slice(0, colonIdx).toLowerCase()
+      const value = token.slice(colonIdx + 1).trim().toLowerCase()
+      if (value && prefixKeys.includes(key as SearchPrefix)) {
+        prefixFilters.push({ key: key as SearchPrefix, value })
+      } else if (value) {
+        generalTerms.push(token.toLowerCase())
+      }
+    } else if (token) {
+      generalTerms.push(token.toLowerCase())
+    }
+  }
+  return { prefixFilters, generalTerms }
+}
+
+function buildTaskSearchHaystack<T extends TaskForFilter>(task: T): string {
+  const bucket = task.durationBucket ?? ''
+  const bucketLabel =
+    DURATION_BUCKETS.find((b) => b.value === bucket)?.label ?? ''
+  const parts = [
+    task.id,
+    task.title,
+    task.notes,
+    task.type,
+    task.customer?.name,
+    (task.customer as { code?: string } | null)?.code,
+    task.delegatedTo?.name,
+    (task as { url?: string | null }).url,
+    (task as { nextAction?: string | null }).nextAction,
+    (task as { linkedEventTitle?: string | null }).linkedEventTitle,
+    (task as { tag?: string | null }).tag,
+    bucket,
+    bucketLabel,
+    ...(task.taskTags ?? []).map((tt) => tt.tag?.name),
+  ]
+  return parts
+    .filter((p): p is string => typeof p === 'string' && p.length > 0)
+    .join(' ')
+    .toLowerCase()
+}
+
+function taskMatchesSearch<T extends TaskForFilter>(
+  task: T,
+  parsed: ParsedSearch
+): boolean {
+  const { prefixFilters, generalTerms } = parsed
+  const v = (s: string) => s.trim().toLowerCase()
+
+  for (const { key, value } of prefixFilters) {
+    switch (key) {
+      case 'kunde': {
+        const name = (task.customer?.name ?? '').toLowerCase()
+        const code =
+          (task.customer as { code?: string } | null)?.code?.toLowerCase() ?? ''
+        if (!name.includes(value) && !code.includes(value)) return false
+        break
+      }
+      case 'tag': {
+        const tagNames = (task.taskTags ?? [])
+          .map((tt) => (tt.tag?.name ?? '').toLowerCase())
+          .join(' ')
+        const legacy = ((task as { tag?: string | null }).tag ?? '').toLowerCase()
+        if (!tagNames.includes(value) && !legacy.includes(value)) return false
+        break
+      }
+      case 'titel': {
+        if (!(task.title ?? '').toLowerCase().includes(value)) return false
+        break
+      }
+      case 'noter': {
+        if (!(task.notes ?? '').toLowerCase().includes(value)) return false
+        break
+      }
+      case 'type': {
+        if (!(task.type ?? '').toLowerCase().includes(value)) return false
+        break
+      }
+      case 'delegeret': {
+        const name = (task.delegatedTo?.name ?? '').toLowerCase()
+        if (!name.includes(value)) return false
+        break
+      }
+      case 'url': {
+        const url = ((task as { url?: string | null }).url ?? '').toLowerCase()
+        if (!url.includes(value)) return false
+        break
+      }
+    }
+  }
+
+  if (generalTerms.length === 0) return true
+
+  const haystack = buildTaskSearchHaystack(task)
+  return generalTerms.every((term) => haystack.includes(v(term)))
+}
+
 export interface TaskListFilters {
   kunde: string[]
   tag: string[]
@@ -202,16 +331,24 @@ export interface TaskForFilter {
 export function useFilteredAndSortedTasks<T extends TaskForFilter>(
   tasks: T[],
   sortBy: SortOption,
-  filters: TaskListFilters
+  filters: TaskListFilters,
+  searchQuery = ''
 ): T[] {
   return useMemo(() => {
     const list = Array.isArray(tasks) ? tasks : []
     const hasFilters = Object.entries(filters).some(([, v]) =>
       Array.isArray(v) ? v.length > 0 : typeof v === 'string' && v.trim() !== ''
     )
-    const filtered = hasFilters
+    const afterFilters = hasFilters
       ? list.filter((t) => taskMatchesFilters(t, filters))
       : list
+
+    const parsed = parseSearchQuery(searchQuery)
+    const hasSearch =
+      parsed.prefixFilters.length > 0 || parsed.generalTerms.length > 0
+    const filtered = hasSearch
+      ? afterFilters.filter((t) => taskMatchesSearch(t, parsed))
+      : afterFilters
 
     return [...filtered].sort((a, b) => {
       switch (sortBy) {
@@ -256,7 +393,7 @@ export function useFilteredAndSortedTasks<T extends TaskForFilter>(
           return 0
       }
     })
-  }, [tasks, sortBy, filters])
+  }, [tasks, sortBy, filters, searchQuery])
 }
 
 export interface TaskListFiltersBarProps {
@@ -264,6 +401,8 @@ export interface TaskListFiltersBarProps {
   onSortChange: (s: SortOption) => void
   filters: TaskListFilters
   onFiltersChange: (f: TaskListFilters) => void
+  searchQuery: string
+  onSearchChange: (q: string) => void
   tasks: TaskForFilter[]
   resultCount?: number
   totalCount?: number
@@ -328,6 +467,8 @@ export function TaskListFiltersBar({
   onSortChange,
   filters,
   onFiltersChange,
+  searchQuery,
+  onSearchChange,
   tasks,
   resultCount,
   totalCount,
@@ -343,10 +484,11 @@ export function TaskListFiltersBar({
   const hasFilters = Object.entries(filters).some(([, v]) =>
     Array.isArray(v) ? v.length > 0 : typeof v === 'string' && v.trim() !== ''
   )
+  const hasSearch = searchQuery.trim().length > 0
   const showCount =
     resultCount !== undefined &&
     totalCount !== undefined &&
-    hasFilters &&
+    (hasFilters || hasSearch) &&
     resultCount !== totalCount
 
   useEffect(() => {
@@ -375,7 +517,16 @@ export function TaskListFiltersBar({
 
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3">
-      <div ref={menuRef} className="relative">
+      <input
+        type="search"
+        value={searchQuery}
+        onChange={(e) => onSearchChange(e.target.value)}
+        placeholder="Søg opgaver..."
+        title="Søger i titel, noter, kunde, tags, type, delegeret, URL, næste handling m.m. Præfikser: kunde:, tag:, titel:, noter:, type:, delegeret:, url:"
+        aria-label="Søg i opgaver"
+        className="flex-1 min-w-[200px] bg-slate-900/60 border border-white/5 rounded-lg px-4 py-2 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40"
+      />
+      <div ref={menuRef} className="relative shrink-0">
         <button
           type="button"
           onClick={() => setMenuOpen((o) => !o)}

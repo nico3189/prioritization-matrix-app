@@ -28,10 +28,16 @@ export default function ClarifyPage() {
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('oldest')
   const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
+  const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useTaskListViewMode()
   const showToast = useToast()
   const { data: tasks = [], isLoading } = useClarifyTasks()
-  const filteredTasks = useFilteredAndSortedTasks(tasks, sortBy, filters)
+  const filteredTasks = useFilteredAndSortedTasks(
+    tasks,
+    sortBy,
+    filters,
+    searchQuery
+  )
   const markDone = useMarkTaskDone({
     onSuccess: () => {
       showToast('Opgave udført!')
@@ -55,6 +61,8 @@ export default function ClarifyPage() {
             onSortChange={setSortBy}
             filters={filters}
             onFiltersChange={setFilters}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
             tasks={tasks}
             resultCount={filteredTasks.length}
             totalCount={tasks.length}
