@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { TaskOverlay } from '@/components/task-overlay'
+import { useRouter } from 'next/navigation'
 import { TaskCard, type TaskCardTask } from '@/components/task-card'
 import { useMarkTaskDone } from '@/lib/use-mark-task-done'
 import { useToast } from '@/components/toast'
@@ -24,7 +24,7 @@ function useClarifyTasks() {
 }
 
 export default function ClarifyPage() {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const router = useRouter()
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('oldest')
   const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
@@ -64,7 +64,7 @@ export default function ClarifyPage() {
           {viewMode === 'table' ? (
             <TaskTable
               tasks={filteredTasks as TaskCardTask[]}
-              onTaskClick={(t) => setSelectedTaskId(t.id)}
+              onTaskClick={(t) => router.push(`/tasks/${t.id}`)}
               onMarkDone={(t) => {
                 setCompletingId(t.id)
                 markDone.mutate(t.id)
@@ -77,7 +77,7 @@ export default function ClarifyPage() {
                 <TaskCard
                   key={t.id}
                   task={t}
-                  onClick={() => setSelectedTaskId(t.id)}
+                  onClick={() => router.push(`/tasks/${t.id}`)}
                   onMarkDone={() => {
                     setCompletingId(t.id)
                     markDone.mutate(t.id)
@@ -90,10 +90,6 @@ export default function ClarifyPage() {
         </>
       )}
 
-      <TaskOverlay
-        taskId={selectedTaskId}
-        onClose={() => setSelectedTaskId(null)}
-      />
     </div>
   )
 }

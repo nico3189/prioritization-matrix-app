@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { TaskOverlay } from '@/components/task-overlay'
+import { useRouter } from 'next/navigation'
 import { TaskCard, type TaskCardTask } from '@/components/task-card'
 import { useMarkTaskDone } from '@/lib/use-mark-task-done'
 import { useToast } from '@/components/toast'
@@ -29,7 +29,7 @@ function sortByPriority<T extends { importance?: number | null; urgency?: number
 }
 
 export default function TodayPage() {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const router = useRouter()
   const [completingId, setCompletingId] = useState<string | null>(null)
   const showToast = useToast()
   const markDone = useMarkTaskDone({
@@ -66,7 +66,7 @@ export default function TodayPage() {
               </p>
               <TaskCard
                 task={primaryTask as TaskCardTask}
-                onClick={() => setSelectedTaskId((primaryTask as TaskCardTask).id)}
+                onClick={() => router.push(`/tasks/${(primaryTask as TaskCardTask).id}`)}
                 onMarkDone={() => {
                   setCompletingId((primaryTask as TaskCardTask).id)
                   markDone.mutate((primaryTask as TaskCardTask).id)
@@ -92,7 +92,7 @@ export default function TodayPage() {
                   >
                     <TaskCard
                       task={t}
-                      onClick={() => setSelectedTaskId(t.id)}
+                      onClick={() => router.push(`/tasks/${t.id}`)}
                       onMarkDone={() => {
                         setCompletingId(t.id)
                         markDone.mutate(t.id)
@@ -108,10 +108,6 @@ export default function TodayPage() {
         </div>
       )}
 
-      <TaskOverlay
-        taskId={selectedTaskId}
-        onClose={() => setSelectedTaskId(null)}
-      />
     </div>
   )
 }

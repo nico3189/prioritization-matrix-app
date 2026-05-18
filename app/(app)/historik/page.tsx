@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { TaskOverlay } from '@/components/task-overlay'
+import { useRouter } from 'next/navigation'
 import { TaskCard, type TaskCardTask } from '@/components/task-card'
 import { TaskTable } from '@/components/task-table'
 import {
@@ -27,7 +27,7 @@ function useHistorikTasks() {
 }
 
 export default function HistorikPage() {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const router = useRouter()
   const [sortBy, setSortBy] = useState<SortOption>('newest')
   const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
   const [viewMode, setViewMode] = useTaskListViewMode()
@@ -71,7 +71,7 @@ export default function HistorikPage() {
             <TaskTable
               variant="historik"
               tasks={filteredTasks as TaskCardTask[]}
-              onTaskClick={(t) => setSelectedTaskId(t.id)}
+              onTaskClick={(t) => router.push(`/tasks/${t.id}`)}
             />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -80,7 +80,7 @@ export default function HistorikPage() {
                   key={task.id}
                   variant="historik"
                   task={task as TaskCardTask}
-                  onClick={() => setSelectedTaskId(task.id)}
+                  onClick={() => router.push(`/tasks/${task.id}`)}
                 />
               ))}
             </div>
@@ -88,10 +88,6 @@ export default function HistorikPage() {
         </>
       )}
 
-      <TaskOverlay
-        taskId={selectedTaskId}
-        onClose={() => setSelectedTaskId(null)}
-      />
     </div>
   )
 }

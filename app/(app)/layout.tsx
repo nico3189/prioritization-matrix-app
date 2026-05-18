@@ -5,11 +5,18 @@ import { AppShell } from '@/components/app-shell'
 
 export default async function AppLayout({
   children,
+  modal,
 }: {
   children: React.ReactNode
+  modal: React.ReactNode
 }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
-  return <AppShell user={session.user}>{children}</AppShell>
+  return (
+    <AppShell user={session.user}>
+      {children}
+      {modal}
+    </AppShell>
+  )
 }
