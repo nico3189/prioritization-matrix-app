@@ -54,8 +54,9 @@ export default function TeammedlemmerPage() {
           onChange={(e) =>
             setTeamMemberCode(e.target.value.toUpperCase().slice(0, 3))
           }
-          placeholder="Kode (3 bogstaver)"
+          placeholder="Kode (2–3 bogstaver)"
           maxLength={3}
+          minLength={2}
           className="w-40 bg-slate-900/60 border border-white/5 rounded-lg px-4 py-2 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40"
         />
         <button
@@ -259,7 +260,7 @@ export default function TeammedlemmerPage() {
                   htmlFor="edit-team-member-code"
                   className="block text-xs font-medium text-app-muted mb-1"
                 >
-                  Kode (3 bogstaver)
+                  Kode (2–3 bogstaver)
                 </label>
                 <input
                   id="edit-team-member-code"
@@ -267,6 +268,7 @@ export default function TeammedlemmerPage() {
                   type="text"
                   defaultValue={editingTeamMember.code ?? ''}
                   maxLength={3}
+                  minLength={2}
                   onChange={(e) =>
                     (e.target.value = e.target.value.toUpperCase().slice(0, 3))
                   }

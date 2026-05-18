@@ -4,9 +4,18 @@ import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 
+const teamMemberCodeSchema = z.union([
+  z
+    .string()
+    .min(2, 'Kode skal være 2–3 bogstaver')
+    .max(3, 'Kode skal være 2–3 bogstaver')
+    .regex(/^[A-Za-z]+$/, 'Kun bogstaver'),
+  z.literal(''),
+])
+
 const createSchema = z.object({
   name: z.string().min(1).max(200),
-  code: z.union([z.string().length(3), z.literal('')]).optional(),
+  code: teamMemberCodeSchema.optional(),
 })
 
 export async function GET() {
