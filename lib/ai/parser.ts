@@ -84,7 +84,7 @@ VIGTIG – type vs. customer:
 
 tags: Tilføj 1-4 korte, relevante tags som array af strenge. Tags skal beskrive opgavens emne, kontekst eller kategori. Foretræk tags fra tagNames-listen hvis angivet. Brug ALDRIG tags fra blacklistedTagNames. Brug danske eller engelske ord. Ingen duplikater. Maks 4 tags.
 
-url: Hvis rawText indeholder en URL (fx https://..., http://...), udtræk den og returnér i url-feltet. Brug den første/mest relevante URL hvis flere findes. Returnér den fulde URL som den står i teksten.
+url: Hvis rawText indeholder URL(s) (fx https://..., http://...), udtræk ALLE og returnér i url-feltet som én streng med én URL per linje (newline-separeret). Ingen URL må udelades. Returnér hver fulde URL som den står i teksten.
 
 parkOnUdviklingsliste (boolean): Skal opgaven parkeres på udviklingslisten (idéer/forbedring — ikke dagens to-do)?
 - true: idé, inspiration, "god idé at…", processoptimering uden konkret deadline, "når der er tid", brainstorm, "måske", "overvej om…" uden commit.
@@ -169,7 +169,14 @@ Return strict JSON with: title (kun kort præcis handling, 1 linje), type (REQUI
         .slice(0, 4)
       if (tagStrings.length > 0) safe.tags = tagStrings
     }
-    if (typeof obj.url === 'string' && obj.url.trim().length > 0) safe.url = obj.url.trim()
+    if (typeof obj.url === 'string' && obj.url.trim().length > 0) {
+      safe.url = obj.url.trim()
+    } else if (Array.isArray(obj.urls)) {
+      const urlLines = obj.urls
+        .filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+        .map((u) => u.trim())
+      if (urlLines.length > 0) safe.url = urlLines.join('\n')
+    }
     if (typeof obj.parkOnUdviklingsliste === 'boolean') {
       safe.parkOnUdviklingsliste = obj.parkOnUdviklingsliste
     }

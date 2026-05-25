@@ -300,3 +300,27 @@ export function useSyncUrgency() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }
+
+export function useTaskVisualCue() {
+  return useQuery({
+    queryKey: ['taskVisualCue'],
+    queryFn: () =>
+      fetch('/api/settings/visual-cue').then((r) => r.json()),
+  })
+}
+
+export function useUpdateTaskVisualCue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      enabled?: boolean
+      colors?: Partial<Record<string, string>>
+    }) =>
+      fetch('/api/settings/visual-cue', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['taskVisualCue'] }),
+  })
+}

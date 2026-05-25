@@ -29,7 +29,10 @@ export default function AlleOpgaverPage() {
   const [sortBy, setSortBy] = useState<SortOption>('priority')
   const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
   const [searchQuery, setSearchQuery] = useState('')
-  const [viewMode, setViewMode] = useTaskListViewMode()
+  const [viewMode, setViewMode] = useTaskListViewMode({
+    defaultMode: 'table',
+    storageKey: 'task-list-view-mode:alle-opgaver',
+  })
   const showToast = useToast()
   const { data: tasks = [], isLoading } = useAlleOpgaverTasks()
   const filteredTasks = useFilteredAndSortedTasks(

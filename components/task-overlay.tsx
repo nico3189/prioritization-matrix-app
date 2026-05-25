@@ -7,6 +7,10 @@ import { AppDatePicker } from '@/components/app-date-picker'
 import { cn } from '@/lib/utils'
 import { getScore } from '@/lib/eisenhower'
 import { useToast } from '@/components/toast'
+import { LinkFavicon } from '@/components/link-favicon'
+import { ensureUrlProtocol, getLinkHostname } from '@/lib/link-favicon'
+import { LinkCalendarEventSection } from '@/components/link-calendar-event-section'
+import type { CalendarEventItem } from '@/lib/use-calendar-events'
 
 const DURATION_BUCKETS = [
   { value: 'LT15', label: 'Under 15 min' },
@@ -129,60 +133,12 @@ function IconLockOpen() {
   )
 }
 
-function IconGoogleCalendar({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className ?? 'w-4 h-4 shrink-0'}
-      viewBox="0 0 256 256"
-      preserveAspectRatio="xMidYMid meet"
-      aria-hidden
-    >
-      <polygon fill="#FFFFFF" points="195.368421 60.6315789 60.6315789 60.6315789 60.6315789 195.368421 195.368421 195.368421" />
-      <polygon fill="#EA4335" points="195.368421 256 256 195.368421 225.684211 190.196005 195.368421 195.368421 189.835162 223.098002" />
-      <path fill="#188038" d="M1.42108547e-14,195.368421 L1.42108547e-14,235.789474 C1.42108547e-14,246.955789 9.04421053,256 20.2105263,256 L60.6315789,256 L66.8568645,225.684211 L60.6315789,195.368421 L27.5991874,190.196005 L1.42108547e-14,195.368421 Z" />
-      <path fill="#1967D2" d="M256,60.6315789 L256,20.2105263 C256,9.04421053 246.955789,1.42108547e-14 235.789474,1.42108547e-14 L195.368421,1.42108547e-14 C191.679582,15.0358547 189.835162,26.1010948 189.835162,33.1957202 C189.835162,40.2903456 191.679582,49.4356319 195.368421,60.6315789 C208.777986,64.4714866 218.883249,66.3914404 225.684211,66.3914404 C232.485172,66.3914404 242.590435,64.4714866 256,60.6315789 Z" />
-      <polygon fill="#FBBC04" points="256 60.6315789 195.368421 60.6315789 195.368421 195.368421 256 195.368421" />
-      <polygon fill="#34A853" points="195.368421 195.368421 60.6315789 195.368421 60.6315789 256 195.368421 256" />
-      <path fill="#4285F4" d="M195.368421,0 L20.2105263,0 C9.04421053,0 0,9.04421053 0,20.2105263 L0,195.368421 L60.6315789,195.368421 L60.6315789,60.6315789 L195.368421,60.6315789 L195.368421,0 Z" />
-      <path fill="#4285F4" d="M88.2694737,165.153684 C83.2336842,161.751579 79.7473684,156.783158 77.8442105,150.214737 L89.5326316,145.397895 C90.5936842,149.44 92.4463158,152.572632 95.0905263,154.795789 C97.7178947,157.018947 100.917895,158.113684 104.656842,158.113684 C108.48,158.113684 111.764211,156.951579 114.509474,154.627368 C117.254737,152.303158 118.635789,149.338947 118.635789,145.751579 C118.635789,142.08 117.187368,139.082105 114.290526,136.757895 C111.393684,134.433684 107.755789,133.271579 103.410526,133.271579 L96.6568421,133.271579 L96.6568421,121.701053 L102.72,121.701053 C106.458947,121.701053 109.608421,120.690526 112.168421,118.669474 C114.728421,116.648421 116.008421,113.886316 116.008421,110.366316 C116.008421,107.233684 114.863158,104.741053 112.572632,102.871579 C110.282105,101.002105 107.385263,100.058947 103.865263,100.058947 C100.429474,100.058947 97.7010526,100.968421 95.68,102.804211 C93.6602819,104.644885 92.1418208,106.968942 91.2673684,109.557895 L79.6968421,104.741053 C81.2294737,100.395789 84.0421053,96.5557895 88.1684211,93.2378947 C92.2947368,89.92 97.5663158,88.2526316 103.966316,88.2526316 C108.698947,88.2526316 112.96,89.1621053 116.732632,90.9978947 C120.505263,92.8336842 123.469474,95.3768421 125.608421,98.6105263 C127.747368,101.861053 128.808421,105.498947 128.808421,109.541053 C128.808421,113.667368 127.814737,117.153684 125.827368,120.016842 C123.84,122.88 121.397895,125.069474 118.501053,126.602105 L118.501053,127.292632 C122.241568,128.834789 125.490747,131.367752 127.898947,134.618947 C130.341053,137.903158 131.570526,141.827368 131.570526,146.408421 C131.570526,150.989474 130.408421,155.082105 128.084211,158.669474 C125.76,162.256842 122.543158,165.086316 118.467368,167.141053 C114.374737,169.195789 109.776842,170.240124 104.673684,170.240124 C98.7621053,170.256842 93.3052632,168.555789 88.2694737,165.153684 L88.2694737,165.153684 Z M160.067368,107.149474 L147.233684,116.429474 L140.816842,106.694737 L163.84,90.0884211 L172.665263,90.0884211 L172.665263,168.421053 L160.067368,168.421053 L160.067368,107.149474 Z" />
-    </svg>
-  )
-}
-
 function IconLink() {
   return (
     <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
     </svg>
   )
-}
-
-function IconGmail({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className ?? 'w-4 h-4 shrink-0'}
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 48 48"
-      aria-hidden
-    >
-      <path fill="#4caf50" d="M45,16.2l-5,2.75l-5,4.75L35,40h7c1.657,0,3-1.343,3-3V16.2z" />
-      <path fill="#1e88e5" d="M3,16.2l3.614,1.71L13,23.7V40H6c-1.657,0-3-1.343-3-3V16.2z" />
-      <polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17" />
-      <path fill="#c62828" d="M3,12.298V16.2l10,7.5V11.2L9.876,8.859C9.132,8.301,8.228,8,7.298,8h0C4.924,8,3,9.924,3,12.298z" />
-      <path fill="#fbc02d" d="M45,12.298V16.2l-10,7.5V11.2l3.124-2.341C38.868,8.301,39.772,8,40.702,8h0 C43.076,8,45,9.924,45,12.298z" />
-    </svg>
-  )
-}
-
-function ensureUrlProtocol(url: string): string {
-  const t = url.trim()
-  if (!t) return ''
-  if (/^https?:\/\//i.test(t)) return t
-  return 'https://' + t
-}
-
-function isGmailUrl(url: string): boolean {
-  return /mail\.google\.com/i.test(url)
 }
 
 function IconTag() {
@@ -403,6 +359,138 @@ function PropertyRowStacked({
       </div>
       <div>{children}</div>
     </div>
+  )
+}
+
+function IconExpandNotes() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+    </svg>
+  )
+}
+
+const notesTextareaClass =
+  displayFieldStackedClass +
+  ' resize-y min-h-[8rem] max-h-[min(20rem,35vh)] leading-relaxed'
+
+function TaskDescriptionField({
+  value,
+  onChange,
+  isLoading,
+  loadingText,
+}: {
+  value: string
+  onChange: (value: string) => void
+  isLoading?: boolean
+  loadingText?: string
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const expandedRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (!isExpanded) return
+    const t = setTimeout(() => expandedRef.current?.focus(), 0)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsExpanded(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [isExpanded])
+
+  if (isLoading) {
+    return (
+      <div
+        className={
+          notesTextareaClass +
+          ' blur-[2px] select-none pointer-events-none resize-none'
+        }
+        aria-hidden
+      >
+        {loadingText}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="relative">
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Beskrivelse af opgaven"
+          rows={6}
+          className={notesTextareaClass + ' pr-10'}
+        />
+        <button
+          type="button"
+          onClick={() => setIsExpanded(true)}
+          className="absolute top-2 right-2 p-1.5 rounded-md border border-white/10 bg-slate-900/80 text-app-muted hover:text-slate-200 hover:bg-white/10 transition-colors duration-200"
+          title="Udvid beskrivelse"
+          aria-label="Udvid beskrivelse"
+        >
+          <IconExpandNotes />
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] text-app-muted">
+        Træk i nederste højre hjørne for at ændre højde, eller brug udvid-knappen.
+      </p>
+
+      {isExpanded && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-8 bg-black/75 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Beskrivelse — udvidet"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setIsExpanded(false)
+          }}
+        >
+          <div
+            className="app-card-gradient rounded-xl2 border border-white/10 shadow-hover w-full max-w-3xl max-h-[85vh] flex flex-col animate-[modalContentIn_180ms_ease-out_forwards]"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10">
+              <h3 className="text-sm font-medium text-slate-200">Beskrivelse</h3>
+              <button
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                className="p-2 rounded-lg border border-white/10 bg-white/5 text-app-muted hover:text-slate-200 hover:bg-white/10 transition-colors"
+                aria-label="Luk udvidet beskrivelse"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4 flex-1 min-h-0 overflow-auto">
+              <textarea
+                ref={expandedRef}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder="Beskrivelse af opgaven"
+                className={
+                  displayFieldStackedClass +
+                  ' w-full min-h-[50vh] max-h-[70vh] resize-y leading-relaxed'
+                }
+              />
+            </div>
+            <div className="px-4 py-3 border-t border-white/10 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                className="bg-app-accent text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition"
+              >
+                Luk
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -722,6 +810,44 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
     syncTaskUrgency.mutate(
       { id: task.id, dueAt },
       { onSuccess: (data) => setForm(formFromTask(data)) }
+    )
+  }
+
+  const handleLinkCalendarEvent = (event: CalendarEventItem) => {
+    if (!task) return
+    updateTask.mutate(
+      {
+        id: task.id,
+        linkedEventId: event.id,
+        linkedEventTitle: event.summary,
+        linkedEventUrl: event.htmlLink ?? null,
+        linkedEventType: null,
+        eventStartAt: event.start
+          ? new Date(event.start).toISOString()
+          : null,
+        eventEndAt: event.end ? new Date(event.end).toISOString() : null,
+      },
+      {
+        onSuccess: () => showToast('Koblet til kalenderbegivenhed'),
+      }
+    )
+  }
+
+  const handleUnlinkCalendarEvent = () => {
+    if (!task) return
+    updateTask.mutate(
+      {
+        id: task.id,
+        linkedEventId: null,
+        linkedEventTitle: null,
+        linkedEventUrl: null,
+        linkedEventType: null,
+        eventStartAt: null,
+        eventEndAt: null,
+      },
+      {
+        onSuccess: () => showToast('Kobling til begivenhed fjernet'),
+      }
     )
   }
 
@@ -1129,22 +1255,12 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                 )}
               </PropertyRowStacked>
               <PropertyRowStacked icon={<IconFileText />} label="Beskrivelse">
-                {taskLoading ? (
-                  <div
-                    className={displayFieldStackedClass + ' blur-[2px] select-none pointer-events-none resize-none min-h-[5.5rem]'}
-                    aria-hidden
-                  >
-                    {LOADING.description}
-                  </div>
-                ) : (
-                  <textarea
-                    value={form.notes}
-                    onChange={(e) => update({ notes: e.target.value })}
-                    placeholder="Beskrivelse af opgaven"
-                    rows={3}
-                    className={displayFieldStackedClass + ' resize-none'}
-                  />
-                )}
+                <TaskDescriptionField
+                  value={form.notes}
+                  onChange={(notes) => update({ notes })}
+                  isLoading={taskLoading}
+                  loadingText={LOADING.description}
+                />
               </PropertyRowStacked>
             </section>
 
@@ -1433,8 +1549,13 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-700/40 text-blue-400 hover:text-blue-300 hover:border-blue-600 transition-colors duration-200"
                               >
-                                {isGmailUrl(url) && <IconGmail className="w-4 h-4 shrink-0" />}
-                                <span className="truncate max-w-[200px]">{url}</span>
+                                <LinkFavicon url={url} />
+                                <span
+                                  className="truncate max-w-[200px]"
+                                  title={url}
+                                >
+                                  {getLinkHostname(url) ?? url}
+                                </span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1512,27 +1633,23 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
             </section>
 
             {/* Tilknyttet begivenhed */}
-            {task && task.linkedEventId && (
+            {task && (
               <section className="space-y-1 border-t border-white/15 pt-4 mt-4 [&>*:first-child]:pt-0">
                 <PropertyRowStacked icon={<IconCalendar />} label="Tilknyttet begivenhed">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {task.linkedEventUrl ? (
-                      <a
-                        href={task.linkedEventUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm text-slate-200 bg-sky-500/15 border border-sky-500/25 hover:bg-sky-500/25 hover:border-sky-500/40 transition-colors"
-                      >
-                        <IconGoogleCalendar />
-                        {task.linkedEventTitle ?? 'Kalenderbegivenhed'}
-                      </a>
-                    ) : (
-                      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm text-slate-200 bg-sky-500/15 border border-sky-500/25">
-                        <IconGoogleCalendar />
-                        {task.linkedEventTitle ?? 'Kalenderbegivenhed'}
-                      </span>
-                    )}
-                  </div>
+                  <LinkCalendarEventSection
+                    linked={
+                      task.linkedEventId
+                        ? {
+                            linkedEventId: task.linkedEventId,
+                            linkedEventTitle: task.linkedEventTitle ?? null,
+                            linkedEventUrl: task.linkedEventUrl ?? null,
+                          }
+                        : null
+                    }
+                    isPending={updateTask.isPending}
+                    onLink={handleLinkCalendarEvent}
+                    onUnlink={handleUnlinkCalendarEvent}
+                  />
                 </PropertyRowStacked>
               </section>
             )}

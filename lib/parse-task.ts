@@ -20,6 +20,7 @@ import {
   resolveTeamMemberMatch,
   teamMemberMentionedInText,
 } from '@/lib/resolve-team-member'
+import { mergeTaskUrls } from '@/lib/task-urls'
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz'
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
@@ -87,15 +88,6 @@ function hasExplicitDateOrDeadline(rawText: string): boolean {
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/** Udtræk første URL fra tekst (https eller http). */
-function extractUrlFromText(text: string): string | null {
-  const match = text.match(/https?:\/\/[^\s]+/)
-  if (!match) return null
-  let url = match[0]
-  url = url.replace(/[.,;:!?)]+$/, '')
-  return url.length > 10 ? url : null
 }
 
 /** Erstat kunde- og team-koder med navne i titlen. */
@@ -251,8 +243,7 @@ export async function runParseForTask(
       )
     }
   }
-  const extractedUrl =
-    result.url?.trim() || extractUrlFromText(rawText) || null
+  const extractedUrl = mergeTaskUrls(result.url, rawText)
 
   const rawTitle = result.title != null && result.title.trim() !== '' ? result.title.trim() : null
   const title = rawTitle

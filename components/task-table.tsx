@@ -1,9 +1,20 @@
 'use client'
 
+import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { getScore, getEffectiveUrgency } from '@/lib/eisenhower'
 import type { TaskCardTask } from '@/components/task-card'
 import { CopyTaskLinkButton } from '@/components/copy-task-link-button'
+import { useTaskVisualCueSettings } from '@/lib/use-task-type-stripe'
+import {
+	normalizeTaskVisualCue,
+	resolveTaskTypeStripeColor,
+	taskTypeStripeStyle,
+} from '@/lib/task-visual-cue'
+import {
+	getDeadlineUrgency,
+	getDeadlineStyles,
+} from '@/lib/deadline-display'
 
 const DURATION_LABEL: Record<string, string> = {
   LT15: '<15 min',
@@ -31,6 +42,15 @@ function formatDeadline(iso: string | Date | null | undefined): string {
   return `${day}. ${month} ${h}.${m}`
 }
 
+function getTaskDescriptionFirstLine(task: {
+	notes?: string | null
+	nextAction?: string | null
+}): string {
+	const raw = (task.notes ?? task.nextAction ?? '').trim()
+	if (!raw) return ''
+	return raw.split(/\r?\n/)[0].trim()
+}
+
 function formatTimestamp(iso: string | Date | null | undefined): string {
   if (!iso) return '–'
   const d = typeof iso === 'string' ? new Date(iso) : iso
@@ -39,38 +59,6 @@ function formatTimestamp(iso: string | Date | null | undefined): string {
   const h = String(d.getHours()).padStart(2, '0')
   const m = String(d.getMinutes()).padStart(2, '0')
   return `${day}. ${month} ${d.getFullYear()} ${h}.${m}`
-}
-
-type DeadlineUrgency = 'normal' | '72h' | '48h' | '24h' | '4h' | 'overdue'
-
-function getDeadlineUrgency(dueAt: string | Date | null | undefined): DeadlineUrgency {
-  if (!dueAt) return 'normal'
-  const due = typeof dueAt === 'string' ? new Date(dueAt) : dueAt
-  const now = Date.now()
-  const hoursUntil = (due.getTime() - now) / (1000 * 60 * 60)
-  if (hoursUntil < 0) return 'overdue'
-  if (hoursUntil <= 4) return '4h'
-  if (hoursUntil <= 24) return '24h'
-  if (hoursUntil <= 48) return '48h'
-  if (hoursUntil <= 72) return '72h'
-  return 'normal'
-}
-
-function getDeadlineStyles(urgency: DeadlineUrgency): string {
-  switch (urgency) {
-    case 'overdue':
-      return 'text-red-400 font-bold'
-    case '4h':
-      return 'text-red-400 font-bold'
-    case '24h':
-      return 'text-red-400'
-    case '48h':
-      return 'text-amber-400'
-    case '72h':
-      return 'text-slate-100'
-    default:
-      return 'text-app-muted'
-  }
 }
 
 const iconClass = 'w-3 h-3 shrink-0 text-app-muted'
@@ -170,6 +158,11 @@ export function TaskTable({
   showCopyLink = true,
   onCopyLink,
 }: TaskTableProps) {
+  const { data: visualCueData } = useTaskVisualCueSettings()
+  const visualCueSettings = useMemo(
+    () => normalizeTaskVisualCue(visualCueData),
+    [visualCueData]
+  )
   const showActions = showCopyLink || !!onMarkDone
   const rowClass =
     'border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors duration-150 cursor-pointer'
@@ -218,16 +211,29 @@ export function TaskTable({
             </tr>
           </thead>
           <tbody>
-            {tasks.map((task) => (
+            {tasks.map((task) => {
+              const descriptionPreview = getTaskDescriptionFirstLine(task)
+              const stripeStyle = taskTypeStripeStyle(
+                resolveTaskTypeStripeColor(task.type, visualCueSettings)
+              )
+              return (
               <tr
                 key={task.id}
                 className={rowClass}
+                style={stripeStyle}
                 onClick={() => onTaskClick?.(task)}
               >
                 <td className={cellClass}>
-                  <span className="font-medium text-slate-100 truncate block">
-                    {task.title ?? '(Uden titel)'}
-                  </span>
+                  <div className="flex flex-col gap-0.5 min-w-0 overflow-hidden">
+                    <span className="font-medium text-slate-100 truncate text-xs block">
+                      {task.title ?? '(Uden titel)'}
+                    </span>
+                    {descriptionPreview && (
+                      <span className="text-xs text-slate-400 truncate block">
+                        {descriptionPreview}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className={cn(cellClass, 'hidden sm:table-cell text-slate-300 truncate')}>
                   {task.customer?.name ?? '–'}
@@ -259,7 +265,7 @@ export function TaskTable({
                   </td>
                 )}
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
       </div>
@@ -330,23 +336,35 @@ export function TaskTable({
                     .filter(Boolean)
                 : (task.tag?.split(',').map((t) => t.trim()).filter(Boolean) ?? [])
             const badge = getBadge?.(task)
+            const descriptionPreview = getTaskDescriptionFirstLine(task)
+            const stripeStyle = taskTypeStripeStyle(
+              resolveTaskTypeStripeColor(task.type, visualCueSettings)
+            )
 
             return (
               <tr
                 key={task.id}
                 className={rowClass}
+                style={stripeStyle}
                 onClick={() => onTaskClick?.(task)}
               >
                 <td className={cellClass}>
                   <div className="flex flex-col gap-0.5 min-w-0 overflow-hidden">
-                    <span className="font-medium text-slate-100 truncate text-xs inline-flex items-center gap-1">
-                      {task.title ?? '(Uden titel)'}
+                    <span className="font-medium text-slate-100 truncate text-xs inline-flex items-center gap-1 min-w-0">
+                      <span className="truncate">
+                        {task.title ?? '(Uden titel)'}
+                      </span>
                       {task.recurrenceRule && (
                         <span className="text-app-muted shrink-0" title="Gentages">
                           <IconRepeat />
                         </span>
                       )}
                     </span>
+                    {descriptionPreview && (
+                      <span className="text-xs text-slate-400 truncate block">
+                        {descriptionPreview}
+                      </span>
+                    )}
                     {badge && <span className="flex items-center gap-1">{badge}</span>}
                   </div>
                 </td>

@@ -7,7 +7,9 @@ import { cn } from '@/lib/utils'
 const SETTINGS_NAV = [
   { href: '/settings/arbejdstider', label: 'Arbejdstider' },
   { href: '/settings/prioriteringsfaktorer', label: 'Prioriteringsfaktorer' },
+  { href: '/settings/opgavefarver', label: 'Opgavefarver' },
   { href: '/settings/api', label: 'API-nøgle' },
+  { href: '/settings/mcp', label: 'MCP-forbindelse' },
   { href: '/settings/kunder', label: 'Kunder' },
   { href: '/settings/teammedlemmer', label: 'Teammedlemmer' },
   { href: '/settings/tags', label: 'Tags' },

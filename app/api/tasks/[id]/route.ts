@@ -26,6 +26,8 @@ const patchSchema = z.object({
   tagIds: z.array(z.string().cuid()).optional(),
   linkedEventId: z.string().optional().nullable(),
   linkedEventType: z.nativeEnum(LinkedEventType).optional().nullable(),
+  linkedEventTitle: z.string().max(500).optional().nullable(),
+  linkedEventUrl: z.string().max(2000).optional().nullable(),
   eventStartAt: z.string().datetime().optional().nullable(),
   eventEndAt: z.string().datetime().optional().nullable(),
   recurrenceRule: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']).optional().nullable(),

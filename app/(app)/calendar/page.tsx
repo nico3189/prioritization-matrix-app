@@ -50,6 +50,46 @@ function IconPaperAirplane() {
   )
 }
 
+function IconGoogleCalendar({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className ?? 'w-4 h-4 shrink-0'}
+      viewBox="0 0 256 256"
+      preserveAspectRatio="xMidYMid meet"
+      aria-hidden
+    >
+      <polygon
+        fill="#FFFFFF"
+        points="195.368421 60.6315789 60.6315789 60.6315789 60.6315789 195.368421 195.368421 195.368421"
+      />
+      <polygon
+        fill="#EA4335"
+        points="195.368421 256 256 195.368421 225.684211 190.196005 195.368421 195.368421 189.835162 223.098002"
+      />
+      <path
+        fill="#188038"
+        d="M1.42108547e-14,195.368421 L1.42108547e-14,235.789474 C1.42108547e-14,246.955789 9.04421053,256 20.2105263,256 L60.6315789,256 L66.8568645,225.684211 L60.6315789,195.368421 L27.5991874,190.196005 L1.42108547e-14,195.368421 Z"
+      />
+      <path
+        fill="#1967D2"
+        d="M256,60.6315789 L256,20.2105263 C256,9.04421053 246.955789,1.42108547e-14 235.789474,1.42108547e-14 L195.368421,1.42108547e-14 C191.679582,15.0358547 189.835162,26.1010948 189.835162,33.1957202 C189.835162,40.2903456 191.679582,49.4356319 195.368421,60.6315789 C208.777986,64.4714866 218.883249,66.3914404 225.684211,66.3914404 C232.485172,66.3914404 242.590435,64.4714866 256,60.6315789 Z"
+      />
+      <polygon
+        fill="#FBBC04"
+        points="256 60.6315789 195.368421 60.6315789 195.368421 195.368421 256 195.368421"
+      />
+      <polygon
+        fill="#34A853"
+        points="195.368421 195.368421 60.6315789 195.368421 60.6315789 256 195.368421 256"
+      />
+      <path
+        fill="#4285F4"
+        d="M195.368421,0 L20.2105263,0 C9.04421053,0 0,9.04421053 0,20.2105263 L0,195.368421 L60.6315789,195.368421 L60.6315789,60.6315789 L195.368421,60.6315789 L195.368421,0 Z"
+      />
+    </svg>
+  )
+}
+
 function formatTimeRange(start: string | undefined, end: string | undefined): string {
   if (!start) return ''
   const h = String(new Date(start).getHours()).padStart(2, '0')
@@ -105,6 +145,15 @@ function useCalendarEvents() {
       if (!r.ok) throw new Error(json.error ?? 'Kunne ikke hente kalender')
       return Array.isArray(json) ? json : []
     },
+    staleTime: 5 * 60 * 1000,
+    retry: (failureCount, err) => {
+      const msg = err instanceof Error ? err.message : ''
+      if (msg === 'No Google token' || msg === 'Calendar auth expired') {
+        return failureCount < 2
+      }
+      return failureCount < 1
+    },
+    retryDelay: (attempt) => Math.min(800 * 2 ** attempt, 3000),
   })
 }
 
@@ -135,7 +184,8 @@ function useCreateTaskFromEvent() {
 }
 
 export default function CalendarPage() {
-  const { data, isLoading, error } = useCalendarEvents()
+  const { data, isLoading, isFetching, error, refetch, failureCount } =
+    useCalendarEvents()
   const events = Array.isArray(data) ? data : []
   const createTask = useCreateTaskFromEvent()
   const [creatingFor, setCreatingFor] = useState<{
@@ -230,12 +280,20 @@ export default function CalendarPage() {
           </p>
         </div>
       )}
-      {error && (
+      {error && !isFetching && (
         <div className="mb-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
           <p className="text-sm text-amber-200 mb-2">
-            Kunne ikke hente kalender. Giv kalendertilladelse ved at logge ind igen.
+            Kunne ikke hente kalender. Prøv igen — eller giv kalendertilladelse ved at
+            logge ind igen.
           </p>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="text-sm text-app-accent hover:underline font-medium"
+            >
+              Prøv igen
+            </button>
             <button
               type="button"
               onClick={() => signIn('google', { callbackUrl: '/calendar', prompt: 'consent' })}
@@ -253,8 +311,10 @@ export default function CalendarPage() {
           </div>
         </div>
       )}
-      {isLoading ? (
-        <p className="text-sm text-app-muted">Henter begivenheder...</p>
+      {isLoading || (isFetching && !data && failureCount > 0) ? (
+        <p className="text-sm text-app-muted">
+          {failureCount > 0 ? 'Forbinder til Google Kalender...' : 'Henter begivenheder...'}
+        </p>
       ) : (
         <div className="space-y-8">
           {(() => {
@@ -301,6 +361,18 @@ export default function CalendarPage() {
                           )}
                         </div>
                         <div className="flex gap-1.5 shrink-0">
+                          {e.htmlLink && (
+                            <a
+                              href={e.htmlLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 p-2 rounded-lg border border-white/10 bg-white/5 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 hover:border-sky-500/25 transition-colors duration-200 ease-out"
+                              title="Åbn i Google Kalender"
+                              aria-label="Åbn i Google Kalender"
+                            >
+                              <IconGoogleCalendar />
+                            </a>
+                          )}
                           {!isPastEvent && (
                             <button
                               type="button"

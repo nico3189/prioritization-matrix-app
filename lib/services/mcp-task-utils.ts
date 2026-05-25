@@ -7,6 +7,7 @@ import {
 	type Tag,
 } from '@prisma/client'
 import { getTaskUrl } from '@/lib/task-url'
+import { splitTaskUrls } from '@/lib/task-urls'
 
 export type McpUrgencyLabel = 'akut' | 'snart' | 'normal' | 'lav'
 export type McpTaskStatus = 'open' | 'done'
@@ -153,7 +154,7 @@ export interface McpTaskDetail extends McpTaskListItem {
 }
 
 export function toMcpTaskDetail(task: TaskWithRelations): McpTaskDetail {
-	const links = task.url ? [task.url] : []
+	const links = splitTaskUrls(task.url)
 	const tags =
 		task.taskTags?.map((tt) => tt.tag.name) ??
 		(task.tag ? task.tag.split(',').map((t) => t.trim()).filter(Boolean) : [])

@@ -2,6 +2,10 @@ import { NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import { prisma } from '@/lib/db'
+import {
+	accessTokenNeedsRefresh,
+	refreshGoogleAccessToken,
+} from '@/lib/google-access-token'
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as NextAuthOptions['adapter'],
@@ -35,31 +39,15 @@ export const authOptions: NextAuthOptions = {
       }
       if (account?.refresh_token) token.refreshToken = account.refresh_token
       const expiresAt = token.expiresAt as number | undefined
+      const refreshToken = token.refreshToken as string | undefined
       if (
-        token.refreshToken &&
-        (!token.accessToken || (expiresAt && Date.now() >= expiresAt - 60 * 1000))
+        refreshToken &&
+        accessTokenNeedsRefresh(token.accessToken as string | undefined, expiresAt)
       ) {
-        try {
-          const res = await fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              client_id: process.env.GOOGLE_CLIENT_ID!,
-              client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-              grant_type: 'refresh_token',
-              refresh_token: token.refreshToken,
-            }),
-          })
-          const data = (await res.json()) as {
-            access_token?: string
-            expires_in?: number
-          }
-          if (data.access_token) {
-            token.accessToken = data.access_token
-            token.expiresAt = Date.now() + (data.expires_in ?? 3600) * 1000
-          }
-        } catch (err) {
-          console.error('[auth] Token refresh failed:', err)
+        const refreshed = await refreshGoogleAccessToken(refreshToken)
+        if (refreshed) {
+          token.accessToken = refreshed.accessToken
+          token.expiresAt = refreshed.expiresAt
         }
       }
       if (user?.email) {
@@ -77,6 +65,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.userId as string
         session.accessToken = token.accessToken as string | undefined
         session.refreshToken = token.refreshToken as string | undefined
+        session.expiresAt = token.expiresAt as number | undefined
       }
       return session
     },
@@ -94,6 +83,7 @@ declare module 'next-auth' {
     user: { id: string; name?: string | null; email?: string | null; image?: string | null }
     accessToken?: string
     refreshToken?: string
+    expiresAt?: number
   }
 }
 

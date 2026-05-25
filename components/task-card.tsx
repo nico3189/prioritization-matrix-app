@@ -3,6 +3,11 @@
 import { cn } from '@/lib/utils'
 import { getScore, getEffectiveUrgency } from '@/lib/eisenhower'
 import { CopyTaskLinkButton } from '@/components/copy-task-link-button'
+import { useTaskTypeStripe } from '@/lib/use-task-type-stripe'
+import {
+	getDeadlineUrgency,
+	getDeadlineStyles,
+} from '@/lib/deadline-display'
 
 const DESCRIPTION_MAX_LEN = 140
 
@@ -54,38 +59,6 @@ function formatDeadline(iso: string | Date | null | undefined): string {
   const h = String(d.getHours()).padStart(2, '0')
   const m = String(d.getMinutes()).padStart(2, '0')
   return `${day}. ${month} ${h}.${m}`
-}
-
-type DeadlineUrgency = 'normal' | '72h' | '48h' | '24h' | '4h' | 'overdue'
-
-function getDeadlineUrgency(dueAt: string | Date | null | undefined): DeadlineUrgency {
-  if (!dueAt) return 'normal'
-  const due = typeof dueAt === 'string' ? new Date(dueAt) : dueAt
-  const now = Date.now()
-  const hoursUntil = (due.getTime() - now) / (1000 * 60 * 60)
-  if (hoursUntil < 0) return 'overdue'
-  if (hoursUntil <= 4) return '4h'
-  if (hoursUntil <= 24) return '24h'
-  if (hoursUntil <= 48) return '48h'
-  if (hoursUntil <= 72) return '72h'
-  return 'normal'
-}
-
-function getDeadlineStyles(urgency: DeadlineUrgency): string {
-  switch (urgency) {
-    case 'overdue':
-      return 'text-red-400 font-bold'
-    case '4h':
-      return 'text-red-400 font-bold'
-    case '24h':
-      return 'text-red-400'
-    case '48h':
-      return 'text-amber-400'
-    case '72h':
-      return 'text-slate-100'
-    default:
-      return ''
-  }
 }
 
 const iconClass = 'w-3.5 h-3.5 shrink-0 text-app-muted'
@@ -223,6 +196,7 @@ export function TaskCard({
   badge,
   variant = 'default',
 }: TaskCardProps) {
+  const { style: stripeStyle } = useTaskTypeStripe(task.type)
   const desc = truncate(task.notes ?? task.nextAction ?? '', DESCRIPTION_MAX_LEN)
   const imp = task.importance ?? 0
   const urg = getEffectiveUrgency(task.urgency ?? 0, task.dueAt ?? null)
@@ -324,12 +298,17 @@ export function TaskCard({
             }
           }}
           className={cn(baseClass, 'cursor-pointer', className)}
+          style={stripeStyle}
         >
           {historikContent}
         </div>
       )
     }
-    return <div className={cn(baseClass, className)}>{historikContent}</div>
+    return (
+      <div className={cn(baseClass, className)} style={stripeStyle}>
+        {historikContent}
+      </div>
+    )
   }
 
   const content = (
@@ -492,11 +471,16 @@ export function TaskCard({
           }
         }}
         className={cn(baseClass, 'cursor-pointer', className)}
+        style={stripeStyle}
       >
         {content}
       </div>
     )
   }
 
-  return <div className={cn(baseClass, className)}>{content}</div>
+  return (
+    <div className={cn(baseClass, className)} style={stripeStyle}>
+      {content}
+    </div>
+  )
 }

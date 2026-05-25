@@ -1,6 +1,13 @@
 'use client'
 
-import { useMemo, useEffect, useState, useRef } from 'react'
+import {
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useRef,
+  useCallback,
+} from 'react'
 import { format, parseISO } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -29,18 +36,29 @@ export type TaskListViewMode = 'grid' | 'table'
 
 const TASK_LIST_VIEW_KEY = 'task-list-view-mode'
 
-export function useTaskListViewMode(): [TaskListViewMode, (mode: TaskListViewMode) => void] {
-  const [mode, setMode] = useState<TaskListViewMode>('grid')
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const stored = localStorage.getItem(TASK_LIST_VIEW_KEY) as TaskListViewMode | null
-    if (stored === 'grid' || stored === 'table') setMode(stored)
-  }, [])
-  const setAndPersist = (m: TaskListViewMode) => {
-    setMode(m)
-    if (typeof window !== 'undefined') localStorage.setItem(TASK_LIST_VIEW_KEY, m)
-  }
-  return [mode, setAndPersist]
+interface UseTaskListViewModeOptions {
+	defaultMode?: TaskListViewMode
+	storageKey?: string
+}
+
+export function useTaskListViewMode(
+	options: UseTaskListViewModeOptions = {}
+): [TaskListViewMode, (mode: TaskListViewMode) => void] {
+	const defaultMode = options.defaultMode ?? 'grid'
+	const storageKey = options.storageKey ?? TASK_LIST_VIEW_KEY
+	const [mode, setMode] = useState<TaskListViewMode>(defaultMode)
+	useEffect(() => {
+		if (typeof window === 'undefined') return
+		const stored = localStorage.getItem(storageKey) as TaskListViewMode | null
+		if (stored === 'grid' || stored === 'table') setMode(stored)
+	}, [storageKey])
+	const setAndPersist = (m: TaskListViewMode) => {
+		setMode(m)
+		if (typeof window !== 'undefined') {
+			localStorage.setItem(storageKey, m)
+		}
+	}
+	return [mode, setAndPersist]
 }
 
 export type SortOption =
@@ -462,6 +480,41 @@ function deriveOptionsFromTasks(tasks: TaskForFilter[]) {
   }
 }
 
+const FILTER_MENU_WIDTH = 380
+const FILTER_MENU_VIEWPORT_GUTTER = 12
+
+interface FilterMenuPanelPosition {
+  top: number
+  left: number
+  width: number
+  maxHeight: number
+}
+
+function computeFilterMenuPanelPosition(
+  anchor: DOMRect
+): FilterMenuPanelPosition {
+  const width = Math.min(
+    FILTER_MENU_WIDTH,
+    window.innerWidth - FILTER_MENU_VIEWPORT_GUTTER * 2
+  )
+  let left = anchor.left
+  if (left + width > window.innerWidth - FILTER_MENU_VIEWPORT_GUTTER) {
+    left = window.innerWidth - width - FILTER_MENU_VIEWPORT_GUTTER
+  }
+  left = Math.max(FILTER_MENU_VIEWPORT_GUTTER, left)
+  const top = anchor.bottom + 8
+  const maxHeight = Math.min(
+    window.innerHeight * 0.85,
+    window.innerHeight - top - FILTER_MENU_VIEWPORT_GUTTER
+  )
+  return {
+    top,
+    left,
+    width,
+    maxHeight: Math.max(160, maxHeight),
+  }
+}
+
 export function TaskListFiltersBar({
   sortBy,
   onSortChange,
@@ -476,7 +529,36 @@ export function TaskListFiltersBar({
   onViewModeChange,
 }: TaskListFiltersBarProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPanelPos, setMenuPanelPos] =
+    useState<FilterMenuPanelPosition | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const updateMenuPanelPosition = useCallback(() => {
+    if (!menuRef.current) return
+    setMenuPanelPos(
+      computeFilterMenuPanelPosition(
+        menuRef.current.getBoundingClientRect()
+      )
+    )
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuPanelPos(null)
+      return
+    }
+    updateMenuPanelPosition()
+    window.addEventListener('resize', updateMenuPanelPosition)
+    window.addEventListener('scroll', updateMenuPanelPosition, true)
+    return () => {
+      window.removeEventListener('resize', updateMenuPanelPosition)
+      window.removeEventListener(
+        'scroll',
+        updateMenuPanelPosition,
+        true
+      )
+    }
+  }, [menuOpen, updateMenuPanelPosition])
 
   const { customerOptions, tagOptions, typeOptions, varighedOptions, delegereTilOptions } =
     useMemo(() => deriveOptionsFromTasks(tasks), [tasks])
@@ -495,7 +577,9 @@ export function TaskListFiltersBar({
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node
       if (!menuRef.current?.contains(target)) {
-        const el = (e.target as Element).closest?.('[data-app-date-picker]')
+        const el = (e.target as Element).closest?.(
+          '[data-app-date-picker], [data-app-select-list]'
+        )
         if (el) return
         setMenuOpen(false)
       }
@@ -526,6 +610,18 @@ export function TaskListFiltersBar({
         aria-label="Søg i opgaver"
         className="flex-1 min-w-[200px] bg-slate-900/60 border border-white/5 rounded-lg px-4 py-2 text-sm text-slate-200 placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-app-accent/40"
       />
+      <select
+        value={sortBy}
+        onChange={(e) => onSortChange(e.target.value as SortOption)}
+        className="shrink-0 w-full sm:w-auto bg-slate-900/60 border border-white/5 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-app-accent/40"
+        aria-label="Sortering"
+      >
+        {SORT_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
       <div ref={menuRef} className="relative shrink-0">
         <button
           type="button"
@@ -542,7 +638,7 @@ export function TaskListFiltersBar({
           <svg className="w-4 h-4 text-app-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
           </svg>
-          Filtre og sortering
+          Filtre
           {activeFilterCount > 0 && (
             <span className="ml-1 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-app-accent/20 text-xs text-slate-200 flex items-center justify-center">
               {activeFilterCount}
@@ -550,41 +646,34 @@ export function TaskListFiltersBar({
           )}
         </button>
 
-        {menuOpen && (
+        {menuOpen && menuPanelPos && (
           <div
-            className="absolute z-50 left-0 top-full mt-2 w-[380px] max-h-[85vh] overflow-y-auto rounded-xl2 border border-white/10 bg-app-card shadow-card animate-[dropdownIn_150ms_ease-out_forwards]"
+            className="fixed z-50 overflow-y-auto rounded-xl2 border border-white/10 bg-app-card shadow-card animate-[dropdownIn_150ms_ease-out_forwards]"
+            style={{
+              top: menuPanelPos.top,
+              left: menuPanelPos.left,
+              width: menuPanelPos.width,
+              maxHeight: menuPanelPos.maxHeight,
+            }}
             role="dialog"
             aria-label="Filtermenu"
           >
-            <div className="p-4 pb-3">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                  Sortering
-                </label>
-                {hasFilters && (
-                  <button
-                    type="button"
-                    onClick={() => onFiltersChange(DEFAULT_TASK_LIST_FILTERS)}
-                    className="text-xs text-app-muted hover:text-slate-300 transition-colors shrink-0"
-                  >
-                    Ryd filtre
-                  </button>
-                )}
-              </div>
-              <select
-                value={sortBy}
-                onChange={(e) => onSortChange(e.target.value as SortOption)}
-                className="w-full bg-slate-900/60 border border-white/5 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-app-accent/40"
-              >
-                {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/5">
+              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                Filtre
+              </span>
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={() => onFiltersChange(DEFAULT_TASK_LIST_FILTERS)}
+                  className="text-xs text-app-muted hover:text-slate-300 transition-colors shrink-0"
+                >
+                  Ryd filtre
+                </button>
+              )}
             </div>
 
-            <div className="border-t border-white/5">
+            <div>
               <div className="px-4 py-2.5 bg-slate-900/30">
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Kategorisering
