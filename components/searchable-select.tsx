@@ -73,7 +73,8 @@ export function SearchableSelect({
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') setIsOpen(false)
-    if (e.key === 'Enter' && filtered.length === 1) {
+    if (e.key === 'Enter' && search.trim() && filtered.length > 0) {
+      e.preventDefault()
       handleSelect(filtered[0])
     }
   }

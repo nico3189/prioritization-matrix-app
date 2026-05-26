@@ -135,6 +135,14 @@ function IconScore() {
   )
 }
 
+function IconLock() {
+  return (
+    <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 11V7a4 4 0 118 0v4M7 11h10a2 2 0 012 2v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2z" />
+    </svg>
+  )
+}
+
 export interface TaskCardTask {
   id: string
   title?: string | null
@@ -155,6 +163,7 @@ export interface TaskCardTask {
   createdAt?: string | Date | null
   completedAt?: string | Date | null
   recurrenceRule?: string | null
+  isLocked?: boolean
 }
 
 export interface TaskCardProps {
@@ -366,6 +375,12 @@ export function TaskCard({
         {task.recurrenceRule && (
           <span className="flex items-center gap-1 text-app-muted" title="Gentages">
             <IconRepeat />
+          </span>
+        )}
+        {task.isLocked && (
+          <span className="flex items-center gap-1 text-amber-300" title="Blokeret af dependencies">
+            <IconLock />
+            Låst
           </span>
         )}
         {badge}

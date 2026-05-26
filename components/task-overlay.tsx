@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { AppSelect } from '@/components/app-select'
 import { AppDatePicker } from '@/components/app-date-picker'
 import { cn } from '@/lib/utils'
@@ -11,6 +12,7 @@ import { LinkFavicon } from '@/components/link-favicon'
 import { ensureUrlProtocol, getLinkHostname } from '@/lib/link-favicon'
 import { LinkCalendarEventSection } from '@/components/link-calendar-event-section'
 import type { CalendarEventItem } from '@/lib/use-calendar-events'
+import { SearchableMultiSelect } from '@/components/searchable-multi-select'
 
 const DURATION_BUCKETS = [
   { value: 'LT15', label: 'Under 15 min' },
@@ -186,6 +188,15 @@ function useTeamMembers(enabled: boolean) {
     queryKey: ['teamMembers'],
     queryFn: () => fetch('/api/settings/team-members').then((r) => r.json()),
     enabled,
+  })
+}
+
+function useAllTasks(enabled: boolean) {
+  return useQuery({
+    queryKey: ['tasks', 'all'],
+    queryFn: () => fetch('/api/tasks').then((r) => r.json()),
+    enabled,
+    staleTime: 30_000,
   })
 }
 
@@ -500,8 +511,10 @@ export interface TaskOverlayProps {
 }
 
 export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
+  const router = useRouter()
   const showToast = useToast()
   const { data: task, isLoading: taskLoading } = useTask(taskId)
+  const { data: allTasks = [] } = useAllTasks(!!taskId)
   const { data: customers = [] } = useCustomers(!!taskId)
   const { data: teamMembers = [] } = useTeamMembers(!!taskId)
   const updateTask = useUpdateTask()
@@ -1436,13 +1449,20 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                         {LOADING.deadline}
                       </div>
                     ) : (
-                      <AppDatePicker
-                        value={form.dueAt}
-                        onChange={(v) => update({ dueAt: v })}
-                        formatDisplay={formatDeadline}
-                        placeholder="Vælg dato"
-                        className="w-full min-w-0"
-                      />
+                      <div className="space-y-2">
+                        <AppDatePicker
+                          value={form.dueAt}
+                          onChange={(v) => update({ dueAt: v })}
+                          formatDisplay={formatDeadline}
+                          placeholder="Vælg dato"
+                          className="w-full min-w-0"
+                        />
+                        {Boolean((task as { deadlineConflict?: boolean }).deadlineConflict) && (
+                          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm">
+                            Deadline ligger før seneste dependency-deadline.
+                          </div>
+                        )}
+                      </div>
                     )}
                   </PropertyRow>
                 </div>
@@ -1631,6 +1651,142 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                 </div>
               </div>
             </section>
+
+            {/* Dependencies */}
+            {task && (
+              <section className="space-y-2 border-t border-white/15 pt-4 mt-4 [&>*:first-child]:pt-0">
+                <PropertyRowStacked icon={<IconLink />} label="Dependencies">
+                  {(() => {
+                    const deps =
+                      (task as unknown as {
+                        dependencies?: Array<{
+                          dependsOnTask: { id: string; title: string | null; status: string | null }
+                        }>
+                      }).dependencies ?? []
+                    const dependents =
+                      (task as unknown as {
+                        dependents?: Array<{
+                          task: { id: string; title: string | null; status: string | null }
+                        }>
+                      }).dependents ?? []
+                    const dependencyIds = deps.map((d) => d.dependsOnTask.id)
+                    const isLocked = Boolean((task as { isLocked?: boolean }).isLocked)
+                    const lockOverride = Boolean((task as { lockOverride?: boolean }).lockOverride)
+
+                    const options = (Array.isArray(allTasks) ? allTasks : [])
+                      .filter((t: { id?: string; status?: string | null }) => {
+                        if (!t?.id) return false
+                        if (t.id === task.id) return false
+                        if (t.status === 'done') return false
+                        return true
+                      })
+                      .map((t: { id: string; title?: string | null }) => ({
+                        value: t.id,
+                        label: t.title?.trim() || '(Uden titel)',
+                      }))
+
+                    return (
+                      <div className="space-y-3">
+                        {isLocked && !lockOverride && (
+                          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm">
+                            Denne opgave er blokeret af uafsluttede dependencies.
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="text-xs text-app-muted block mb-1.5">
+                            Denne opgave afhænger af
+                          </label>
+                          <SearchableMultiSelect
+                            value={dependencyIds}
+                            onChange={(next) =>
+                              updateTask.mutate({
+                                id: task.id,
+                                dependencyIds: next,
+                              })
+                            }
+                            options={options}
+                            placeholder="Ingen"
+                            searchPlaceholder="Søg opgaver..."
+                          />
+                          {deps.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {deps.map((d) => (
+                                <button
+                                  key={d.dependsOnTask.id}
+                                  type="button"
+                                  onClick={() => router.push(`/tasks/${d.dependsOnTask.id}`)}
+                                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm text-slate-200 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                                  title="Åbn opgave"
+                                >
+                                  <span className="truncate max-w-[18rem]">
+                                    {d.dependsOnTask.title ?? '(Uden titel)'}
+                                  </span>
+                                  {d.dependsOnTask.status === 'done' ? (
+                                    <span className="text-emerald-300 text-xs">Done</span>
+                                  ) : (
+                                    <span className="text-amber-300 text-xs">Åben</span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={lockOverride}
+                            onChange={(e) =>
+                              updateTask.mutate({
+                                id: task.id,
+                                lockOverride: e.target.checked,
+                              })
+                            }
+                            className="rounded border-white/20 bg-slate-900/60 text-app-accent focus:ring-app-accent/40"
+                          />
+                          <span className="text-sm text-slate-200">
+                            Override lås (skjul advarsel)
+                          </span>
+                        </label>
+
+                        <div>
+                          <label className="text-xs text-app-muted block mb-1.5">
+                            Afhængige opgaver
+                          </label>
+                          {dependents.length === 0 ? (
+                            <p className="text-sm text-app-muted">Ingen.</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {dependents.map((d) => (
+                                <button
+                                  key={d.task.id}
+                                  type="button"
+                                  onClick={() => router.push(`/tasks/${d.task.id}`)}
+                                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm text-slate-200 bg-slate-900/40 border border-white/10 hover:bg-white/10 transition-colors"
+                                  title="Åbn opgave"
+                                >
+                                  <span className="truncate max-w-[18rem]">
+                                    {d.task.title ?? '(Uden titel)'}
+                                  </span>
+                                  {d.task.status === 'done' ? (
+                                    <span className="text-emerald-300 text-xs">Done</span>
+                                  ) : (
+                                    <span className="text-slate-400 text-xs">
+                                      {d.task.status ?? '–'}
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </PropertyRowStacked>
+              </section>
+            )}
 
             {/* Tilknyttet begivenhed */}
             {task && (

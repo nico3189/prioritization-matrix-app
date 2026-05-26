@@ -156,6 +156,15 @@ export function SearchableMultiSelect({
     onChange([])
   }
 
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const query = search.trim()
+    if (!query || filtered.length === 0) return
+    toggle(filtered[0])
+    setSearch('')
+  }
+
   const listMaxHeight = placement
     ? Math.max(40, placement.maxHeight - 52)
     : 160
@@ -232,6 +241,7 @@ export function SearchableMultiSelect({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
                 placeholder={searchPlaceholder}
                 className={cn(baseInputClass, 'w-full py-1.5 text-sm')}
                 aria-label="Søg i listen"

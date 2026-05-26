@@ -324,3 +324,23 @@ export function useUpdateTaskVisualCue() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['taskVisualCue'] }),
   })
 }
+
+export function useTaskTableColumns() {
+  return useQuery({
+    queryKey: ['taskTableColumns'],
+    queryFn: () => fetch('/api/settings/table-columns').then((r) => r.json()),
+  })
+}
+
+export function useUpdateTaskTableColumns() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { order?: string[]; enabled?: Record<string, boolean> }) =>
+      fetch('/api/settings/table-columns', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['taskTableColumns'] }),
+  })
+}

@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { TaskStatus } from '@prisma/client'
 import { createTaskFromRawText } from '@/lib/services/tasks'
+import { computeDeadlineConflict } from '@/lib/deadline-conflict'
 
 const createSchema = z.object({
   rawText: z.string().min(1).max(10000),
@@ -28,15 +29,10 @@ export async function GET(req: Request) {
   try {
     const where: Record<string, unknown> = { userId }
     if (status) where.status = status
-    if (view === 'clarify') {
-      where.OR = [
-        { status: { in: [TaskStatus.inbox_raw, TaskStatus.needs_clarification] } },
-        {
-          status: TaskStatus.qualified,
-          dueAt: { lt: new Date() },
-        },
-      ]
-      delete where.status
+    const isClarify = view === 'clarify'
+    if (isClarify) {
+      // Hent bredere og filtrér i JS, så vi kan inkludere deadline-konflikter.
+      where.status = { in: [TaskStatus.inbox_raw, TaskStatus.needs_clarification, TaskStatus.qualified] }
     }
     if (view === 'udvikling') {
       where.status = TaskStatus.udvikling
@@ -48,6 +44,11 @@ export async function GET(req: Request) {
         customer: true,
         delegatedTo: true,
         taskTags: { include: { tag: true } },
+        dependencies: {
+          include: {
+            dependsOnTask: { select: { id: true, status: true, dueAt: true } },
+          },
+        },
         events: {
           where: { eventType: 'done' },
           orderBy: { createdAt: 'desc' },
@@ -57,11 +58,34 @@ export async function GET(req: Request) {
       },
       orderBy: [{ createdAt: 'desc' }],
     })
-    const mapped = tasks.map(({ events, ...t }) => ({
-      ...t,
-      completedAt: events[0]?.createdAt ?? null,
-    }))
-    return NextResponse.json(mapped)
+    const mapped = tasks.map(({ events, dependencies, ...t }) => {
+      const incompleteDeps = dependencies.some(
+        (d) => d.dependsOnTask.status !== TaskStatus.done
+      )
+      const isLocked = incompleteDeps && !t.lockOverride
+      const conflict = computeDeadlineConflict({
+        taskDueAt: t.dueAt,
+        prereqDueAts: dependencies.map((d) => d.dependsOnTask.dueAt),
+      })
+      return {
+        ...t,
+        dependencies,
+        isLocked,
+        deadlineConflict: conflict.deadlineConflict,
+        latestPrereqDueAt: conflict.latestPrereqDueAt,
+        completedAt: events[0]?.createdAt ?? null,
+      }
+    })
+    if (!isClarify) return NextResponse.json(mapped)
+
+    const now = Date.now()
+    const clarify = mapped.filter((t) => {
+      if (t.status === TaskStatus.inbox_raw || t.status === TaskStatus.needs_clarification) return true
+      if (t.status !== TaskStatus.qualified) return false
+      const overdue = t.dueAt ? new Date(t.dueAt as unknown as string).getTime() < now : false
+      return overdue || Boolean((t as { deadlineConflict?: boolean }).deadlineConflict)
+    })
+    return NextResponse.json(clarify)
   } catch (err) {
     console.error('[GET /api/tasks]', err)
     return NextResponse.json(

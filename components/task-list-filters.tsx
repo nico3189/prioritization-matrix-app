@@ -94,6 +94,12 @@ function isCuid(s: string): boolean {
 function taskMatchesFilters<T extends TaskForFilter>(task: T, filters: TaskListFilters): boolean {
   const v = (s: string) => s.trim().toLowerCase()
 
+  if (filters.laast !== 'alle') {
+    const isLocked = Boolean((task as { isLocked?: boolean }).isLocked)
+    if (filters.laast === 'kun' && !isLocked) return false
+    if (filters.laast === 'skjul' && isLocked) return false
+  }
+
   if (filters.kunde.length > 0) {
     const custId =
       (task as { customerId?: string | null }).customerId ??
@@ -313,6 +319,7 @@ export interface TaskListFilters {
   delegereTil: string[]
   deadlineFra: string
   deadlineTil: string
+  laast: 'alle' | 'kun' | 'skjul'
 }
 
 export const DEFAULT_TASK_LIST_FILTERS: TaskListFilters = {
@@ -325,6 +332,7 @@ export const DEFAULT_TASK_LIST_FILTERS: TaskListFilters = {
   delegereTil: [],
   deadlineFra: '',
   deadlineTil: '',
+  laast: 'alle',
 }
 
 export interface TaskForFilter {
@@ -597,7 +605,8 @@ export function TaskListFiltersBar({
     filters.varighed.length +
     filters.delegereTil.length +
     (filters.deadlineFra ? 1 : 0) +
-    (filters.deadlineTil ? 1 : 0)
+    (filters.deadlineTil ? 1 : 0) +
+    (filters.laast === 'alle' ? 0 : 1)
 
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -752,6 +761,34 @@ export function TaskListFiltersBar({
                     aria-label="Søg i noter"
                   />
                 </div>
+              </div>
+            </div>
+
+            <div className="border-t border-white/5">
+              <div className="px-4 py-2.5 bg-slate-900/30">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Dependencies
+                </span>
+              </div>
+              <div className="p-4 pt-2">
+                <label className="text-xs text-app-muted block mb-1.5">
+                  Låste opgaver
+                </label>
+                <select
+                  value={filters.laast}
+                  onChange={(e) =>
+                    onFiltersChange({
+                      ...filters,
+                      laast: e.target.value as TaskListFilters['laast'],
+                    })
+                  }
+                  className="w-full bg-slate-900/60 border border-white/5 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-app-accent/40"
+                  aria-label="Filtrér låste opgaver"
+                >
+                  <option value="alle">Alle</option>
+                  <option value="kun">Kun låste</option>
+                  <option value="skjul">Skjul låste</option>
+                </select>
               </div>
             </div>
 

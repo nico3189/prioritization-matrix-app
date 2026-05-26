@@ -7,6 +7,8 @@ import { TaskStatus, DurationBucket, TaskType, LinkedEventType } from '@prisma/c
 import { logTaskEvent } from '@/lib/events'
 import { spawnRecurringNext } from '@/lib/recurrence'
 import { computeUrgencyAfterDeadlineChange } from '@/lib/task-score-on-update'
+import { assertNoDependencyCycles } from '@/lib/task-dependencies'
+import { computeDeadlineConflict } from '@/lib/deadline-conflict'
 
 const patchSchema = z.object({
   title: z.string().min(1).max(2000).optional(),
@@ -31,6 +33,8 @@ const patchSchema = z.object({
   eventStartAt: z.string().datetime().optional().nullable(),
   eventEndAt: z.string().datetime().optional().nullable(),
   recurrenceRule: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']).optional().nullable(),
+  dependencyIds: z.array(z.string().cuid()).optional(),
+  lockOverride: z.boolean().optional(),
   /** Sæt til null for at låse værdien op – AI kan derefter ændre den igen */
   importanceManuallyOverriddenAt: z.null().optional(),
   urgencyManuallyOverriddenAt: z.null().optional(),
@@ -51,10 +55,33 @@ export async function GET(
       customer: true,
       delegatedTo: true,
       taskTags: { include: { tag: true } },
+      dependencies: {
+        include: {
+          dependsOnTask: { select: { id: true, title: true, status: true, dueAt: true } },
+        },
+      },
+      dependents: {
+        include: {
+          task: { select: { id: true, title: true, status: true } },
+        },
+      },
     },
   })
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  return NextResponse.json(task)
+  const incompleteDeps = task.dependencies.some(
+    (d) => d.dependsOnTask.status !== TaskStatus.done
+  )
+  const isLocked = incompleteDeps && !task.lockOverride
+  const conflict = computeDeadlineConflict({
+    taskDueAt: task.dueAt,
+    prereqDueAts: task.dependencies.map((d) => d.dependsOnTask.dueAt),
+  })
+  return NextResponse.json({
+    ...task,
+    isLocked,
+    deadlineConflict: conflict.deadlineConflict,
+    latestPrereqDueAt: conflict.latestPrereqDueAt,
+  })
 }
 
 export async function PATCH(
@@ -74,9 +101,13 @@ export async function PATCH(
   if (!parsed.success) return NextResponse.json(parsed.error.flatten(), { status: 400 })
   const data = parsed.data as Record<string, unknown>
   const tagIds = data.tagIds as string[] | undefined
+  const dependencyIds = data.dependencyIds as string[] | undefined
   if (tagIds !== undefined) {
     delete data.tagIds
     delete data.tag
+  }
+  if (dependencyIds !== undefined) {
+    delete data.dependencyIds
   }
   if (data.dueAt !== undefined) data.dueAt = data.dueAt ? new Date(data.dueAt as string) : null
   if (data.url !== undefined && data.url === '') data.url = null
@@ -109,6 +140,18 @@ export async function PATCH(
   }
   if (parsed.data.lockImportance !== undefined) delete (data as Record<string, unknown>).lockImportance
   if (parsed.data.lockUrgency !== undefined) delete (data as Record<string, unknown>).lockUrgency
+
+  if (dependencyIds !== undefined) {
+    const unique = Array.from(new Set(dependencyIds))
+    await assertNoDependencyCycles(prisma, session.user.id, id, unique)
+    const prereqTasks = await prisma.task.findMany({
+      where: { id: { in: unique }, userId: session.user.id },
+      select: { id: true },
+    })
+    if (prereqTasks.length !== unique.length) {
+      return NextResponse.json({ error: 'Ugyldig dependency' }, { status: 400 })
+    }
+  }
   const newDueAt =
     parsed.data.dueAt !== undefined
       ? (data.dueAt as Date | null)
@@ -123,10 +166,23 @@ export async function PATCH(
       data.urgencyManuallyOverriddenAt = null
     }
   }
-  const updated = await prisma.task.update({
-    where: { id },
-    data,
-    include: { customer: true, delegatedTo: true, taskTags: { include: { tag: true } } },
+  const updated = await prisma.$transaction(async (tx) => {
+    const t = await tx.task.update({
+      where: { id },
+      data,
+      include: { customer: true, delegatedTo: true, taskTags: { include: { tag: true } } },
+    })
+    if (dependencyIds !== undefined) {
+      const unique = Array.from(new Set(dependencyIds))
+      await tx.taskDependency.deleteMany({ where: { taskId: id } })
+      if (unique.length > 0) {
+        await tx.taskDependency.createMany({
+          data: unique.map((dependsOnTaskId) => ({ taskId: id, dependsOnTaskId })),
+          skipDuplicates: true,
+        })
+      }
+    }
+    return t
   })
   if (tagIds !== undefined) {
     await prisma.taskTag.deleteMany({ where: { taskId: id } })
@@ -141,7 +197,21 @@ export async function PATCH(
     tagIds !== undefined
       ? await prisma.task.findFirst({
           where: { id, userId: session.user.id },
-          include: { customer: true, delegatedTo: true, taskTags: { include: { tag: true } } },
+          include: {
+            customer: true,
+            delegatedTo: true,
+            taskTags: { include: { tag: true } },
+            dependencies: {
+              include: {
+                dependsOnTask: { select: { id: true, title: true, status: true, dueAt: true } },
+              },
+            },
+            dependents: {
+              include: {
+                task: { select: { id: true, title: true, status: true } },
+              },
+            },
+          },
         })
       : updated
   if (parsed.data.status === TaskStatus.qualified) await logTaskEvent(id, session.user.id, 'qualified')
@@ -203,9 +273,22 @@ export async function PATCH(
     })
   }
   const response = result ?? updated
+  const depsForLock =
+    (response as unknown as { dependencies?: Array<{ dependsOnTask: { status: TaskStatus; dueAt?: Date | null } }> })
+      .dependencies ?? []
+  const incompleteDeps = depsForLock.some(
+    (d) => d.dependsOnTask.status !== TaskStatus.done
+  )
+  const isLocked =
+    incompleteDeps &&
+    !(response as unknown as { lockOverride?: boolean }).lockOverride
+  const conflict = computeDeadlineConflict({
+    taskDueAt: (response as unknown as { dueAt?: Date | null }).dueAt ?? null,
+    prereqDueAts: depsForLock.map((d) => d.dependsOnTask.dueAt ?? null),
+  })
   const json = spawnedTask
-    ? { ...response, spawnedTask }
-    : response
+    ? { ...response, spawnedTask, isLocked, ...conflict }
+    : { ...response, isLocked, ...conflict }
   return NextResponse.json(json)
 }
 

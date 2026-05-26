@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { getScore, getEffectiveUrgency } from '@/lib/eisenhower'
 import type { TaskCardTask } from '@/components/task-card'
@@ -15,6 +16,13 @@ import {
 	getDeadlineUrgency,
 	getDeadlineStyles,
 } from '@/lib/deadline-display'
+import {
+	DEFAULT_TASK_TABLE_COLUMNS_SETTINGS,
+	TASK_TABLE_COLUMN_LABEL,
+	TASK_TABLE_COLUMNS,
+	normalizeTaskTableColumnsSettings,
+	type TaskTableColumnId,
+} from '@/lib/task-table-columns'
 
 const DURATION_LABEL: Record<string, string> = {
   LT15: '<15 min',
@@ -135,6 +143,70 @@ function IconRepeat() {
   )
 }
 
+function IconUser() {
+	return (
+		<svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+			<path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+		</svg>
+	)
+}
+
+function IconLock() {
+  return (
+    <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 11V7a4 4 0 118 0v4M7 11h10a2 2 0 012 2v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2z" />
+    </svg>
+  )
+}
+
+const COLUMN_META: Record<
+	TaskTableColumnId,
+	{ icon: React.ReactNode; thClassName?: string; tdClassName?: string }
+> = {
+	customer: {
+		icon: <IconCompany />,
+		thClassName: 'hidden sm:table-cell',
+		tdClassName: 'hidden sm:table-cell text-slate-300 truncate',
+	},
+	type: {
+		icon: <IconFolder />,
+		thClassName: 'hidden md:table-cell',
+		tdClassName: 'hidden md:table-cell text-app-muted',
+	},
+	score: {
+		icon: <IconScore />,
+		tdClassName: 'text-right tabular-nums text-slate-300',
+	},
+	deadline: {
+		icon: <IconCalendar />,
+		thClassName: 'hidden md:table-cell whitespace-nowrap',
+		tdClassName: 'hidden md:table-cell whitespace-nowrap',
+	},
+	created: {
+		icon: <IconCalendar />,
+		tdClassName: 'whitespace-nowrap text-app-muted',
+	},
+	completed: {
+		icon: <IconClock />,
+		tdClassName: 'whitespace-nowrap',
+	},
+	duration: {
+		icon: <IconClock />,
+		thClassName: 'hidden lg:table-cell',
+		tdClassName: 'hidden lg:table-cell text-app-muted',
+	},
+	tags: {
+		icon: <IconTag />,
+		thClassName: 'hidden lg:table-cell',
+		tdClassName: 'hidden lg:table-cell',
+	},
+	delegatedTo: {
+		icon: <IconUser />,
+		thClassName: 'hidden lg:table-cell',
+		tdClassName: 'hidden lg:table-cell text-app-muted truncate',
+	},
+}
+
 export interface TaskTableProps {
   tasks: TaskCardTask[]
   onTaskClick?: (task: TaskCardTask) => void
@@ -163,6 +235,25 @@ export function TaskTable({
     () => normalizeTaskVisualCue(visualCueData),
     [visualCueData]
   )
+  const { data: tableColumnsData } = useQuery({
+    queryKey: ['taskTableColumns'],
+    queryFn: () => fetch('/api/settings/table-columns').then((r) => r.json()),
+    staleTime: 5 * 60 * 1000,
+  })
+  const tableColumnsSettings = useMemo(
+    () => normalizeTaskTableColumnsSettings(tableColumnsData),
+    [tableColumnsData]
+  )
+  const enabledColumns = useMemo(() => {
+    const base =
+      tableColumnsData == null
+        ? DEFAULT_TASK_TABLE_COLUMNS_SETTINGS
+        : tableColumnsSettings
+    const ordered = base.order.filter((c) =>
+      (TASK_TABLE_COLUMNS as string[]).includes(c)
+    ) as TaskTableColumnId[]
+    return ordered.filter((c) => base.enabled[c] === true)
+  }, [tableColumnsData, tableColumnsSettings])
   const showActions = showCopyLink || !!onMarkDone
   const rowClass =
     'border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors duration-150 cursor-pointer'
@@ -181,30 +272,17 @@ export function TaskTable({
                   Titel
                 </span>
               </th>
-              <th className={cn(thClass, 'w-[15%] min-w-[5rem] hidden sm:table-cell')}>
-                <span className="inline-flex items-center gap-1">
-                  <IconCompany />
-                  Kunde
-                </span>
-              </th>
-              <th className={cn(thClass, 'w-[12%] min-w-[4rem] hidden md:table-cell')}>
-                <span className="inline-flex items-center gap-1">
-                  <IconFolder />
-                  Type
-                </span>
-              </th>
-              <th className={cn(thClass, 'w-[18%] min-w-[6rem] whitespace-nowrap')}>
-                <span className="inline-flex items-center gap-1">
-                  <IconCalendar />
-                  Oprettet
-                </span>
-              </th>
-              <th className={cn(thClass, 'w-[18%] min-w-[6rem] whitespace-nowrap')}>
-                <span className="inline-flex items-center gap-1">
-                  <IconClock />
-                  Afsluttet
-                </span>
-              </th>
+              {enabledColumns.map((col) => {
+                const meta = COLUMN_META[col]
+                return (
+                  <th key={col} className={cn(thClass, meta?.thClassName)}>
+                    <span className="inline-flex items-center gap-1">
+                      {meta?.icon}
+                      {TASK_TABLE_COLUMN_LABEL[col]}
+                    </span>
+                  </th>
+                )
+              })}
               {showActions && (
                 <th className={cn(thClass, 'w-16')} aria-label="Handlinger" />
               )}
@@ -225,7 +303,7 @@ export function TaskTable({
               >
                 <td className={cellClass}>
                   <div className="flex flex-col gap-0.5 min-w-0 overflow-hidden">
-                    <span className="font-medium text-slate-100 truncate text-xs block">
+                    <span className="font-medium text-slate-100 truncate text-sm block">
                       {task.title ?? '(Uden titel)'}
                     </span>
                     {descriptionPreview && (
@@ -235,18 +313,44 @@ export function TaskTable({
                     )}
                   </div>
                 </td>
-                <td className={cn(cellClass, 'hidden sm:table-cell text-slate-300 truncate')}>
-                  {task.customer?.name ?? '–'}
-                </td>
-                <td className={cn(cellClass, 'hidden md:table-cell text-app-muted')}>
-                  {task.type ? (TYPE_LABEL[task.type] ?? task.type) : '–'}
-                </td>
-                <td className={cn(cellClass, 'whitespace-nowrap text-app-muted')}>
-                  {formatTimestamp(task.createdAt)}
-                </td>
-                <td className={cn(cellClass, 'whitespace-nowrap', task.completedAt ? 'text-emerald-400/90' : 'text-app-muted')}>
-                  {task.completedAt ? formatTimestamp(task.completedAt) : '–'}
-                </td>
+                {enabledColumns.map((col) => {
+                  const meta = COLUMN_META[col]
+                  switch (col) {
+                    case 'customer':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {task.customer?.name ?? '–'}
+                        </td>
+                      )
+                    case 'type':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {task.type ? (TYPE_LABEL[task.type] ?? task.type) : '–'}
+                        </td>
+                      )
+                    case 'created':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {formatTimestamp(task.createdAt)}
+                        </td>
+                      )
+                    case 'completed':
+                      return (
+                        <td
+                          key={col}
+                          className={cn(
+                            cellClass,
+                            meta.tdClassName,
+                            task.completedAt ? 'text-emerald-400/90' : 'text-app-muted'
+                          )}
+                        >
+                          {task.completedAt ? formatTimestamp(task.completedAt) : '–'}
+                        </td>
+                      )
+                    default:
+                      return null
+                  }
+                })}
                 {showActions && (
                   <td
                     className={cn(cellClass, 'w-16')}
@@ -283,42 +387,17 @@ export function TaskTable({
                 Titel
               </span>
             </th>
-            <th className={cn(thClass, 'w-[12%] min-w-[5rem] hidden sm:table-cell')}>
-              <span className="inline-flex items-center gap-1">
-                <IconCompany />
-                Kunde
-              </span>
-            </th>
-            <th className={cn(thClass, 'w-[8%] min-w-[4rem] hidden md:table-cell')}>
-              <span className="inline-flex items-center gap-1">
-                <IconFolder />
-                Type
-              </span>
-            </th>
-            <th className={cn(thClass, 'w-12 text-right')}>
-              <span className="inline-flex items-center justify-end gap-1 w-full">
-                <IconScore />
-                Score
-              </span>
-            </th>
-            <th className={cn(thClass, 'w-[14%] min-w-[6rem] hidden md:table-cell whitespace-nowrap')}>
-              <span className="inline-flex items-center gap-1">
-                <IconCalendar />
-                Deadline
-              </span>
-            </th>
-            <th className={cn(thClass, 'w-[10%] min-w-[4rem] hidden lg:table-cell')}>
-              <span className="inline-flex items-center gap-1">
-                <IconClock />
-                Varighed
-              </span>
-            </th>
-            <th className={cn(thClass, 'w-[12%] min-w-[5rem] hidden lg:table-cell')}>
-              <span className="inline-flex items-center gap-1">
-                <IconTag />
-                Tags
-              </span>
-            </th>
+            {enabledColumns.map((col) => {
+              const meta = COLUMN_META[col]
+              return (
+                <th key={col} className={cn(thClass, meta?.thClassName)}>
+                  <span className="inline-flex items-center gap-1">
+                    {meta?.icon}
+                    {TASK_TABLE_COLUMN_LABEL[col]}
+                  </span>
+                </th>
+              )
+            })}
             {showActions && (
               <th className={cn(thClass, 'w-16')} aria-label="Handlinger" />
             )}
@@ -337,6 +416,7 @@ export function TaskTable({
                 : (task.tag?.split(',').map((t) => t.trim()).filter(Boolean) ?? [])
             const badge = getBadge?.(task)
             const descriptionPreview = getTaskDescriptionFirstLine(task)
+            const isLocked = Boolean((task as { isLocked?: boolean }).isLocked)
             const stripeStyle = taskTypeStripeStyle(
               resolveTaskTypeStripeColor(task.type, visualCueSettings)
             )
@@ -350,13 +430,18 @@ export function TaskTable({
               >
                 <td className={cellClass}>
                   <div className="flex flex-col gap-0.5 min-w-0 overflow-hidden">
-                    <span className="font-medium text-slate-100 truncate text-xs inline-flex items-center gap-1 min-w-0">
+                    <span className="font-medium text-slate-100 truncate text-sm inline-flex items-center gap-1 min-w-0">
                       <span className="truncate">
                         {task.title ?? '(Uden titel)'}
                       </span>
                       {task.recurrenceRule && (
                         <span className="text-app-muted shrink-0" title="Gentages">
                           <IconRepeat />
+                        </span>
+                      )}
+                      {isLocked && (
+                        <span className="text-amber-300 shrink-0" title="Blokeret af dependencies">
+                          <IconLock />
                         </span>
                       )}
                     </span>
@@ -368,46 +453,96 @@ export function TaskTable({
                     {badge && <span className="flex items-center gap-1">{badge}</span>}
                   </div>
                 </td>
-                <td className={cn(cellClass, 'hidden sm:table-cell text-slate-300 truncate')}>
-                  {task.customer?.name ?? '–'}
-                </td>
-                <td className={cn(cellClass, 'hidden md:table-cell text-app-muted')}>
-                  {task.type ? (TYPE_LABEL[task.type] ?? task.type) : '–'}
-                </td>
-                <td className={cn(cellClass, 'text-right tabular-nums text-slate-300')}>
-                  {score}
-                </td>
-                <td className={cn(cellClass, 'hidden md:table-cell whitespace-nowrap')}>
-                  {task.dueAt ? (
-                    <span
-                      className={cn(
-                        getDeadlineStyles(getDeadlineUrgency(task.dueAt))
-                      )}
-                    >
-                      {formatDeadline(task.dueAt)}
-                      {getDeadlineUrgency(task.dueAt) === 'overdue' && (
-                        <span className="ml-1">⚠️</span>
-                      )}
-                    </span>
-                  ) : (
-                    '–'
-                  )}
-                </td>
-                <td className={cn(cellClass, 'hidden lg:table-cell text-app-muted')}>
-                  {task.durationBucket
-                    ? (DURATION_LABEL[task.durationBucket] ?? task.durationBucket)
-                    : '–'}
-                </td>
-                <td className={cn(cellClass, 'hidden lg:table-cell')}>
-                  {tags.length > 0 ? (
-                    <span className="text-app-muted truncate block">
-                      {tags.slice(0, 3).join(', ')}
-                      {tags.length > 3 && ' …'}
-                    </span>
-                  ) : (
-                    '–'
-                  )}
-                </td>
+                {enabledColumns.map((col) => {
+                  const meta = COLUMN_META[col]
+                  switch (col) {
+                    case 'customer':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {task.customer?.name ?? '–'}
+                        </td>
+                      )
+                    case 'type':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {task.type ? (TYPE_LABEL[task.type] ?? task.type) : '–'}
+                        </td>
+                      )
+                    case 'score':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {score}
+                        </td>
+                      )
+                    case 'deadline':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {task.dueAt ? (
+                            <span
+                              className={cn(
+                                getDeadlineStyles(getDeadlineUrgency(task.dueAt))
+                              )}
+                            >
+                              {formatDeadline(task.dueAt)}
+                              {getDeadlineUrgency(task.dueAt) === 'overdue' && (
+                                <span className="ml-1">⚠️</span>
+                              )}
+                            </span>
+                          ) : (
+                            '–'
+                          )}
+                        </td>
+                      )
+                    case 'duration':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {task.durationBucket
+                            ? (DURATION_LABEL[task.durationBucket] ?? task.durationBucket)
+                            : '–'}
+                        </td>
+                      )
+                    case 'tags':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {tags.length > 0 ? (
+                            <span className="text-app-muted truncate block">
+                              {tags.slice(0, 3).join(', ')}
+                              {tags.length > 3 && ' …'}
+                            </span>
+                          ) : (
+                            '–'
+                          )}
+                        </td>
+                      )
+                    case 'delegatedTo':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {(task as { delegatedTo?: { name?: string | null } | null }).delegatedTo?.name ?? '–'}
+                        </td>
+                      )
+                    case 'created':
+                      return (
+                        <td key={col} className={cn(cellClass, meta.tdClassName)}>
+                          {formatTimestamp(task.createdAt)}
+                        </td>
+                      )
+                    case 'completed':
+                      return (
+                        <td
+                          key={col}
+                          className={cn(
+                            cellClass,
+                            meta.tdClassName,
+                            task.completedAt ? 'text-emerald-400/90' : 'text-app-muted'
+                          )}
+                        >
+                          {task.completedAt ? formatTimestamp(task.completedAt) : '–'}
+                        </td>
+                      )
+                    default:
+                      return null
+                  }
+                })}
                 {showActions && (
                   <td
                     className={cn(cellClass, 'w-16')}
