@@ -636,7 +636,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
     )
     setTimeTrackingLoading(true)
     try {
-      await startTimeTracking(timeTrackingSettings, timeTrackingText)
+      await startTimeTracking(timeTrackingText)
       setTimeTrackingConfirmed(true)
       showToast('Tidsregistrering startet')
     } catch (err) {

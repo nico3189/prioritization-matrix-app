@@ -66,8 +66,8 @@ export default function TidsregistreringPage() {
 			</h1>
 			<p className="text-xs text-app-muted mb-6 max-w-xl">
 				Indstillinger til at starte tidsregistrering fra opgavemodalen via
-				jeres eksterne API. Kaldet sendes direkte fra browseren med de
-				værdier du gemmer her.
+				jeres eksterne API. Kaldet sendes via appens server med de værdier
+				du gemmer her.
 			</p>
 
 			{isLoading ? (
