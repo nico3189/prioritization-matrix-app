@@ -344,3 +344,32 @@ export function useUpdateTaskTableColumns() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['taskTableColumns'] }),
   })
 }
+
+export function useTimeTrackingSettings() {
+  return useQuery({
+    queryKey: ['timeTrackingSettings'],
+    queryFn: () =>
+      fetch('/api/settings/time-tracking').then((r) => r.json()),
+  })
+}
+
+export function useUpdateTimeTrackingSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      url?: string
+      apiKey?: string
+      userId?: number | null
+    }) =>
+      fetch('/api/settings/time-tracking', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then((r) => {
+        if (!r.ok) throw new Error('Kunne ikke gemme')
+        return r.json()
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['timeTrackingSettings'] }),
+  })
+}

@@ -13,6 +13,13 @@ import { ensureUrlProtocol, getLinkHostname } from '@/lib/link-favicon'
 import { LinkCalendarEventSection } from '@/components/link-calendar-event-section'
 import type { CalendarEventItem } from '@/lib/use-calendar-events'
 import { SearchableMultiSelect } from '@/components/searchable-multi-select'
+import { useTimeTrackingSettings } from '@/app/(app)/settings/_lib/settings-hooks'
+import {
+	buildTimeTrackingText,
+	isTimeTrackingConfigured,
+	normalizeTimeTrackingSettings,
+} from '@/lib/time-tracking-settings'
+import { startTimeTracking } from '@/lib/start-time-tracking'
 
 const DURATION_BUCKETS = [
   { value: 'LT15', label: 'Under 15 min' },
@@ -581,7 +588,12 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   const [tagIds, setTagIds] = useState<string[]>([])
   const [displayTags, setDisplayTags] = useState<Array<{ id: string; name: string; color: string }>>([])
   const [doneConfirmOpen, setDoneConfirmOpen] = useState(false)
+  const [timeTrackingLoading, setTimeTrackingLoading] = useState(false)
+  const [timeTrackingConfirmed, setTimeTrackingConfirmed] = useState(false)
   const backdropClickedRef = useRef(false)
+  const { data: timeTrackingRaw } = useTimeTrackingSettings()
+  const timeTrackingSettings = normalizeTimeTrackingSettings(timeTrackingRaw)
+  const timeTrackingReady = isTimeTrackingConfigured(timeTrackingSettings)
 
   const taskForm = task ? formFromTask(task) : null
   const taskTagIds =
@@ -595,6 +607,48 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
         JSON.stringify([...tagIds].sort()) !==
           JSON.stringify([...taskTagIds].sort()))
   )
+
+  useEffect(() => {
+    if (!timeTrackingConfirmed) return
+    const t = setTimeout(() => setTimeTrackingConfirmed(false), 2500)
+    return () => clearTimeout(t)
+  }, [timeTrackingConfirmed])
+
+  const typeLabel =
+    TASK_TYPES.find((t) => t.value === form.type)?.label ?? ''
+  const canStartTimeTracking =
+    timeTrackingReady &&
+    Boolean(form.type.trim()) &&
+    Boolean(form.title.trim())
+  const timeTrackingDisabledReason = !timeTrackingReady
+    ? 'Konfigurer tidsregistrering under Indstillinger'
+    : !form.type.trim()
+      ? 'Vælg type først'
+      : !form.title.trim()
+        ? 'Angiv en titel'
+        : ''
+
+  const handleStartTimeTracking = async () => {
+    if (!canStartTimeTracking || timeTrackingLoading) return
+    const timeTrackingText = buildTimeTrackingText(
+      typeLabel,
+      form.title
+    )
+    setTimeTrackingLoading(true)
+    try {
+      await startTimeTracking(timeTrackingSettings, timeTrackingText)
+      setTimeTrackingConfirmed(true)
+      showToast('Tidsregistrering startet')
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? err.message
+          : 'Kunne ikke starte tidsregistrering'
+      )
+    } finally {
+      setTimeTrackingLoading(false)
+    }
+  }
 
   const urls = (form.url || '').split('\n').map((s) => s.trim()).filter(Boolean)
   const addUrl = useCallback(() => {
@@ -1211,6 +1265,81 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                   ) : (
                     <svg className={cn('w-4 h-4', hasUnsavedChanges ? 'text-white' : 'text-blue-500')} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
                       <path d="M13.9,4.6l-2.5-2.5C11.3,2.1,11.1,2,11,2H3C2.4,2,2,2.4,2,3v10c0,0.6,0.4,1,1,1h10c0.6,0,1-0.4,1-1V5C14,4.9,13.9,4.7,13.9,4.6z M6,3h4v2H6V3z M10,13H6V9h4V13z M11,13V9c0-0.6-0.4-1-1-1H6C5.4,8,5,8.4,5,9v4H3V3h2v2c0,0.6,0.4,1,1,1h4c0.6,0,1-0.4,1-1V3.2l2,2V13H11z" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleStartTimeTracking()}
+                  disabled={
+                    taskLoading ||
+                    !canStartTimeTracking ||
+                    timeTrackingLoading
+                  }
+                  className={cn(
+                    'shrink-0 p-2 rounded-lg border transition-colors duration-200 ease-out disabled:opacity-50',
+                    timeTrackingConfirmed
+                      ? 'border-emerald-500/40 bg-emerald-600/90 text-white'
+                      : 'border-white/10 bg-white/5 text-slate-300 hover:text-white hover:bg-white/10'
+                  )}
+                  aria-label="Start tidsregistrering"
+                  title={
+                    timeTrackingConfirmed
+                      ? 'Tidsregistrering startet'
+                      : timeTrackingDisabledReason ||
+                        'Start tidsregistrering'
+                  }
+                >
+                  {timeTrackingLoading ? (
+                    <svg
+                      className="w-4 h-4 animate-spin text-slate-300"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      aria-hidden
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                  ) : timeTrackingConfirmed ? (
+                    <svg
+                      className="w-4 h-4 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                   )}
                 </button>
