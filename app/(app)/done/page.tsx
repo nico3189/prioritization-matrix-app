@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useOpenTaskModal } from '@/lib/use-open-task'
 import { TaskCard, type TaskCardTask } from '@/components/task-card'
 import {
   TaskListFiltersBar,
@@ -22,7 +22,7 @@ function useDoneTasks() {
 }
 
 export default function DonePage() {
-  const router = useRouter()
+  const openTask = useOpenTaskModal()
   const [sortBy, setSortBy] = useState<SortOption>('newest')
   const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
   const [searchQuery, setSearchQuery] = useState('')
@@ -63,7 +63,7 @@ export default function DonePage() {
           {viewMode === 'table' ? (
             <TaskTable
               tasks={filteredTasks as TaskCardTask[]}
-              onTaskClick={(t) => router.push(`/tasks/${t.id}`)}
+              onTaskClick={(t) => openTask(t.id)}
             />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -71,7 +71,7 @@ export default function DonePage() {
                 <TaskCard
                   key={task.id}
                   task={task}
-                  onClick={() => router.push(`/tasks/${task.id}`)}
+                  onClick={() => openTask(task.id)}
                 />
               ))}
             </div>

@@ -172,9 +172,7 @@ function useCreateTaskFromEvent() {
         const msg = json.error ?? json.message ?? 'Kunne ikke oprette opgave'
         throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg))
       }
-      const task = json
-      fetch(`/api/tasks/${task.id}/parse`, { method: 'POST', keepalive: true })
-      return { task }
+      return { task: json }
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['tasks'] })

@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Customer" ADD COLUMN IF NOT EXISTS "priority" INTEGER NOT NULL DEFAULT 5;

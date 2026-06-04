@@ -70,3 +70,29 @@ export async function assertNoDependencyCycles(
 	}
 }
 
+/**
+ * Sætter prerequisites for en opgave (erstatter eksisterende).
+ */
+export async function applyTaskDependencies(
+	prisma: PrismaClient,
+	userId: string,
+	taskId: string,
+	dependencyIds: string[]
+): Promise<void> {
+	const unique = Array.from(new Set(dependencyIds))
+	await prisma.taskDependency.deleteMany({ where: { taskId } })
+	if (unique.length === 0) return
+
+	await assertNoDependencyCycles(prisma, userId, taskId, unique)
+	const prereqTasks = await prisma.task.findMany({
+		where: { id: { in: unique }, userId },
+		select: { id: true },
+	})
+	if (prereqTasks.length !== unique.length) {
+		throw new Error('Ugyldig dependency')
+	}
+	await prisma.taskDependency.createMany({
+		data: unique.map((dependsOnTaskId) => ({ taskId, dependsOnTaskId })),
+		skipDuplicates: true,
+	})
+}

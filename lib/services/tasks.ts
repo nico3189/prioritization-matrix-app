@@ -1,7 +1,6 @@
 import { prisma } from '@/lib/db'
 import { TaskStatus, LinkedEventType, type Prisma } from '@prisma/client'
 import { logTaskEvent } from '@/lib/events'
-import { runParseForTask } from '@/lib/parse-task'
 import {
 	type McpUrgencyLabel,
 	minutesToDurationBucket,
@@ -121,9 +120,6 @@ export async function createTaskFromRawText(
 		include: { customer: true, delegatedTo: true },
 	})
 	await logTaskEvent(task.id, userId, 'created')
-	runParseForTask(task.id, userId).catch((err) =>
-		console.error('[createTaskFromRawText] background parse failed:', err)
-	)
 	return task
 }
 

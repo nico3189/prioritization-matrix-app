@@ -6,10 +6,13 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { TaskStatus } from '@prisma/client'
 import { createTaskFromRawText } from '@/lib/services/tasks'
+import { runParseForTask } from '@/lib/parse-task'
 import { computeDeadlineConflict } from '@/lib/deadline-conflict'
+import { applyTaskDependencies } from '@/lib/task-dependencies'
 
 const createSchema = z.object({
   rawText: z.string().min(1).max(10000),
+  dependencyIds: z.array(z.string().cuid()).optional(),
   linkedEventId: z.string().optional(),
   linkedEventType: z.enum(['prep', 'followup']).optional(),
   linkedEventTitle: z.string().max(500).optional(),
@@ -123,7 +126,64 @@ export async function POST(req: Request) {
       },
       userId
     )
-    return NextResponse.json(task)
+    try {
+      await runParseForTask(task.id, userId)
+    } catch (parseErr) {
+      const detail =
+        parseErr instanceof Error ? parseErr.message : 'Ukendt fejl'
+      console.error('[POST /api/tasks] parse failed:', parseErr)
+      return NextResponse.json(
+        {
+          error: 'Opgaven blev oprettet, men AI-parse fejlede',
+          code: 'PARSE_FAILED',
+          detail,
+          taskId: task.id,
+        },
+        { status: 503 }
+      )
+    }
+    const dependencyIds = parsed.data.dependencyIds
+    if (dependencyIds?.length) {
+      try {
+        await applyTaskDependencies(prisma, userId, task.id, dependencyIds)
+      } catch (depErr) {
+        const message =
+          depErr instanceof Error ? depErr.message : 'Ugyldig dependency'
+        return NextResponse.json({ error: message }, { status: 400 })
+      }
+    }
+    const updated = await prisma.task.findFirst({
+      where: { id: task.id, userId },
+      include: {
+        customer: true,
+        delegatedTo: true,
+        taskTags: { include: { tag: true } },
+        dependencies: {
+          include: {
+            dependsOnTask: {
+              select: { id: true, title: true, status: true, dueAt: true },
+            },
+          },
+        },
+      },
+    })
+    if (!updated) return NextResponse.json(task)
+    const { dependencies, ...rest } = updated
+    const incompleteDeps = dependencies.some(
+      (d) => d.dependsOnTask.status !== TaskStatus.done
+    )
+    const isLocked = incompleteDeps && !rest.lockOverride
+    const conflict = computeDeadlineConflict({
+      taskDueAt: rest.dueAt,
+      prereqDueAts: dependencies.map((d) => d.dependsOnTask.dueAt),
+    })
+    return NextResponse.json({
+      ...rest,
+      dependencies,
+      isLocked,
+      deadlineConflict: conflict.deadlineConflict,
+      latestPrereqDueAt: conflict.latestPrereqDueAt,
+    })
   } catch (err) {
     console.error('[POST /api/tasks]', err)
     const message = err instanceof Error ? err.message : 'Kunne ikke oprette opgave'

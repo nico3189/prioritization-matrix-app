@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
-import { AddTaskModal } from '@/components/add-task-modal'
+import { AddTaskModalProvider } from '@/components/add-task-modal'
 
 const iconClass = 'w-5 h-5 shrink-0'
 
@@ -197,6 +197,7 @@ export function AppShell({ user, children }: AppShellProps) {
   }, [])
 
   return (
+    <AddTaskModalProvider>
     <div className="flex min-h-screen bg-transparent">
       {/* Desktop sidebar – fixed så den følger med ved scroll */}
       <aside
@@ -372,8 +373,7 @@ export function AppShell({ user, children }: AppShellProps) {
           {children}
         </div>
       </main>
-
-      <AddTaskModal />
     </div>
+    </AddTaskModalProvider>
   )
 }

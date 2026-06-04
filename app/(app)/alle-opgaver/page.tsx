@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useOpenTaskModal } from '@/lib/use-open-task'
 import { TaskCard, type TaskCardTask } from '@/components/task-card'
 import { TaskTable } from '@/components/task-table'
 import { useMarkTaskDone } from '@/lib/use-mark-task-done'
@@ -24,7 +24,7 @@ function useAlleOpgaverTasks() {
 }
 
 export default function AlleOpgaverPage() {
-  const router = useRouter()
+  const openTask = useOpenTaskModal()
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('priority')
   const [filters, setFilters] = useState<TaskListFilters>(DEFAULT_TASK_LIST_FILTERS)
@@ -79,7 +79,7 @@ export default function AlleOpgaverPage() {
           {viewMode === 'table' ? (
             <TaskTable
               tasks={filteredTasks as TaskCardTask[]}
-              onTaskClick={(t) => router.push(`/tasks/${t.id}`)}
+              onTaskClick={(t) => openTask(t.id)}
               onMarkDone={(t) => {
                 setCompletingId(t.id)
                 markDone.mutate(t.id)
@@ -92,7 +92,7 @@ export default function AlleOpgaverPage() {
                 <TaskCard
                   key={task.id}
                   task={task as TaskCardTask}
-                  onClick={() => router.push(`/tasks/${task.id}`)}
+                  onClick={() => openTask(task.id)}
                   onMarkDone={() => {
                     setCompletingId(task.id)
                     markDone.mutate(task.id)

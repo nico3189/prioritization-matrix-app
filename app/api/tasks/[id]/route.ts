@@ -57,12 +57,35 @@ export async function GET(
       taskTags: { include: { tag: true } },
       dependencies: {
         include: {
-          dependsOnTask: { select: { id: true, title: true, status: true, dueAt: true } },
+          dependsOnTask: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              dueAt: true,
+              dependents: {
+                include: {
+                  task: { select: { id: true, title: true, status: true } },
+                },
+              },
+            },
+          },
         },
       },
       dependents: {
         include: {
-          task: { select: { id: true, title: true, status: true } },
+          task: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              dependents: {
+                include: {
+                  task: { select: { id: true, title: true, status: true } },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -194,7 +217,7 @@ export async function PATCH(
     }
   }
   const result =
-    tagIds !== undefined
+    tagIds !== undefined || dependencyIds !== undefined
       ? await prisma.task.findFirst({
           where: { id, userId: session.user.id },
           include: {

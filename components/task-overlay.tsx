@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useOpenTaskModal } from '@/lib/use-open-task'
 import { AppSelect } from '@/components/app-select'
 import { AppDatePicker } from '@/components/app-date-picker'
 import { cn } from '@/lib/utils'
@@ -20,6 +20,11 @@ import {
 	normalizeTimeTrackingSettings,
 } from '@/lib/time-tracking-settings'
 import { startTimeTracking } from '@/lib/start-time-tracking'
+import { useAddTaskModal } from '@/components/add-task-modal'
+import {
+	closeAppModal,
+	registerAppModalCloser,
+} from '@/lib/app-modal-coordinator'
 
 const DURATION_BUCKETS = [
   { value: 'LT15', label: 'Under 15 min' },
@@ -142,10 +147,54 @@ function IconLockOpen() {
   )
 }
 
+function MenuCheckIndicator({ checked }: { checked: boolean }) {
+  return (
+    <span
+      className={cn(
+        'w-4 h-4 shrink-0 rounded flex items-center justify-center border transition-colors duration-200',
+        checked
+          ? 'border-app-accent/50 bg-app-accent/15'
+          : 'border-white/30 bg-slate-800/80'
+      )}
+      aria-hidden
+    >
+      {checked ? (
+        <svg
+          className="w-3 h-3 text-app-accent"
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path
+            fillRule="evenodd"
+            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+            clipRule="evenodd"
+          />
+        </svg>
+      ) : null}
+    </span>
+  )
+}
+
 function IconLink() {
   return (
     <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+    </svg>
+  )
+}
+
+function IconSubtasks() {
+  return (
+    <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h6" />
+    </svg>
+  )
+}
+
+function IconParentTask() {
+  return (
+    <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
     </svg>
   )
 }
@@ -207,18 +256,93 @@ function useAllTasks(enabled: boolean) {
   })
 }
 
+type SavedTaskResponse = {
+  id: string
+  title?: string | null
+  notes?: string | null
+  customerId?: string | null
+  type?: string | null
+  importance?: number | null
+  urgency?: number | null
+  durationBucket?: string | null
+  dueAt?: string | Date | null
+  delegatedToId?: string | null
+  url?: string | null
+  status?: string
+  taskTags?: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>
+  spawnedTask?: { id: string; dueAt: string }
+  dependencies?: Array<{ dependsOnTask: { id: string } }>
+  dependents?: Array<{ task: { id: string } }>
+  isLocked?: boolean
+}
+
+function collectDependencyRelatedTaskIds(
+  task: SavedTaskResponse | undefined,
+  extraIds?: string[]
+): string[] {
+  const ids = new Set<string>()
+  task?.dependencies?.forEach((d) => ids.add(d.dependsOnTask.id))
+  task?.dependents?.forEach((d) => ids.add(d.task.id))
+  extraIds?.forEach((id) => ids.add(id))
+  return Array.from(ids)
+}
+
+type UpdateTaskVariables = {
+  id: string
+  /** Tidligere dependencyIds på den opdaterede opgave (til cache-invalidering). */
+  previousDependencyIds?: string[]
+  /** Ekstra opgave-ids der skal genhentes efter dependency-ændring. */
+  invalidateTaskIds?: string[]
+  [k: string]: unknown
+}
+
 function useUpdateTask() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; [k: string]: unknown }) =>
-      fetch(`/api/tasks/${id}`, {
+    mutationFn: async (variables: UpdateTaskVariables) => {
+      const {
+        id,
+        previousDependencyIds: _prevDeps,
+        invalidateTaskIds: _invalidateIds,
+        ...data
+      } = variables
+      const r = await fetch(`/api/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-      }).then((r) => r.json()),
-    onSuccess: (_data) => {
+      })
+      const json = await r.json()
+      if (!r.ok) {
+        throw new Error(
+          (json as { error?: string })?.error ?? 'Kunne ikke gemme opgave'
+        )
+      }
+      return json as SavedTaskResponse
+    },
+    onSuccess: (data, variables) => {
+      const prev = qc.getQueryData<SavedTaskResponse>(['task', data.id])
+      const prevDepIds =
+        variables.previousDependencyIds ??
+        prev?.dependencies?.map((d) => d.dependsOnTask.id) ??
+        []
+      const newDepIds = Array.isArray(variables.dependencyIds)
+        ? variables.dependencyIds
+        : (data.dependencies?.map((d) => d.dependsOnTask.id) ?? [])
+      const relatedIds = new Set([
+        ...collectDependencyRelatedTaskIds(prev),
+        ...collectDependencyRelatedTaskIds(data),
+        ...prevDepIds,
+        ...newDepIds,
+        ...(variables.invalidateTaskIds ?? []),
+      ])
+
+      qc.setQueryData(['task', data.id], data)
       qc.invalidateQueries({ queryKey: ['tasks'] })
-      qc.invalidateQueries({ queryKey: ['task', _data.id] })
+      relatedIds.forEach((relatedId) => {
+        if (relatedId !== data.id) {
+          qc.invalidateQueries({ queryKey: ['task', relatedId] })
+        }
+      })
     },
   })
 }
@@ -397,14 +521,22 @@ function TaskDescriptionField({
   onChange,
   isLoading,
   loadingText,
+  onBeforeExpand,
+  dismissExpanded,
 }: {
   value: string
   onChange: (value: string) => void
   isLoading?: boolean
   loadingText?: string
+  onBeforeExpand?: () => void
+  dismissExpanded?: boolean
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const expandedRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (dismissExpanded) setIsExpanded(false)
+  }, [dismissExpanded])
 
   useEffect(() => {
     if (!isExpanded) return
@@ -445,7 +577,10 @@ function TaskDescriptionField({
         />
         <button
           type="button"
-          onClick={() => setIsExpanded(true)}
+          onClick={() => {
+            onBeforeExpand?.()
+            setIsExpanded(true)
+          }}
           className="absolute top-2 right-2 p-1.5 rounded-md border border-white/10 bg-slate-900/80 text-app-muted hover:text-slate-200 hover:bg-white/10 transition-colors duration-200"
           title="Udvid beskrivelse"
           aria-label="Udvid beskrivelse"
@@ -512,13 +647,353 @@ function TaskDescriptionField({
   )
 }
 
+function relationStatusBadge(status: string | null | undefined) {
+	if (!status || status === 'qualified' || status === 'done') return null
+	return (
+		<span className="text-slate-400 text-xs shrink-0">{status}</span>
+	)
+}
+
+const relationActionButtonClass =
+	'inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-400 hover:text-slate-200 hover:bg-white/10 hover:border-white/15 transition-colors duration-200 active:scale-[0.98] disabled:opacity-50'
+
+interface TaskRelationDependent {
+	id: string
+	title: string | null
+	status: string | null
+}
+
+interface TaskRelationItem {
+	id: string
+	title: string | null
+	status: string | null
+	dependents?: TaskRelationDependent[]
+}
+
+type DependentsConfirmAction =
+	| 'delete'
+	| 'markDone'
+	| 'markDoneSave'
+	| 'relationMarkDone'
+
+interface DependentsConfirmState {
+	action: DependentsConfirmAction
+	dependents: Array<{ id: string; title: string | null }>
+}
+
+function mapRelationTask(task: {
+	id: string
+	title: string | null
+	status: string | null
+	dependents?: Array<{ task: TaskRelationDependent }>
+}): TaskRelationItem {
+	return {
+		id: task.id,
+		title: task.title,
+		status: task.status,
+		dependents: (task.dependents ?? []).map((d) => d.task),
+	}
+}
+
+function RelationTaskCheckbox({
+	isDone,
+	isDisabled,
+	isToggling,
+	onToggle,
+}: {
+	isDone: boolean
+	isDisabled?: boolean
+	isToggling?: boolean
+	onToggle: () => void
+}) {
+	return (
+		<button
+			type="button"
+			role="checkbox"
+			aria-checked={isDone}
+			aria-label={
+				isDone ? 'Gendan opgave' : 'Marker opgave som udført'
+			}
+			disabled={isDisabled}
+			onClick={(e) => {
+				e.stopPropagation()
+				onToggle()
+			}}
+			className={cn(
+				'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors duration-200',
+				isDone
+					? 'bg-emerald-600/90 border-emerald-500/80 text-white'
+					: 'border-white/20 hover:border-white/35 hover:bg-white/5',
+				isDisabled && 'opacity-50 cursor-not-allowed'
+			)}
+		>
+			{isToggling ? (
+				<span
+					className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin"
+					aria-hidden
+				/>
+			) : isDone ? (
+				<svg
+					className="w-2.5 h-2.5"
+					fill="currentColor"
+					viewBox="0 0 20 20"
+					aria-hidden
+				>
+					<path
+						fillRule="evenodd"
+						d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+						clipRule="evenodd"
+					/>
+				</svg>
+			) : null}
+		</button>
+	)
+}
+
+function TaskRelationListRow({
+	item,
+	onOpen,
+	onRemove,
+	onToggleDone,
+	isRemovePending,
+	isTogglingDone,
+	isPending,
+	canRemove = true,
+	canToggleDone = true,
+}: {
+	item: TaskRelationItem
+	onOpen: () => void
+	onRemove?: () => void
+	onToggleDone?: () => void
+	isRemovePending?: boolean
+	isTogglingDone?: boolean
+	isPending?: boolean
+	canRemove?: boolean
+	canToggleDone?: boolean
+}) {
+	const isDone = item.status === 'done'
+	return (
+		<li
+			className={cn(
+				'flex items-center gap-2 py-0.5',
+				isDone && 'opacity-70'
+			)}
+		>
+			{canToggleDone && onToggleDone && (
+				<RelationTaskCheckbox
+					isDone={isDone}
+					isToggling={isTogglingDone}
+					isDisabled={isPending}
+					onToggle={onToggleDone}
+				/>
+			)}
+			<button
+				type="button"
+				onClick={onOpen}
+				className="flex-1 min-w-0 text-left text-sm text-slate-200 hover:text-white truncate transition-colors"
+				title="Åbn opgave"
+			>
+				{item.title?.trim() || '(Uden titel)'}
+			</button>
+			{!canToggleDone && isDone && (
+				<span className="text-emerald-300/90 text-xs shrink-0">
+					Lukket
+				</span>
+			)}
+			{relationStatusBadge(item.status)}
+			{canRemove && onRemove && (
+				<button
+					type="button"
+					onClick={onRemove}
+					disabled={isRemovePending}
+					className="p-1 rounded text-app-muted hover:text-slate-200 hover:bg-white/10 transition-colors disabled:opacity-50 shrink-0"
+					aria-label="Fjern relation"
+				>
+					<svg
+						className="w-3.5 h-3.5"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						strokeWidth={2}
+					>
+						<path
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							d="M6 18L18 6M6 6l12 12"
+						/>
+					</svg>
+				</button>
+			)}
+		</li>
+	)
+}
+
+function TaskRelationsEditor({
+	subtasks,
+	subtaskIds,
+	prerequisites,
+	prerequisiteIds,
+	options,
+	isPending,
+	togglingRelationId,
+	onSubtaskLinksChange,
+	onRemoveSubtask,
+	onPrerequisiteIdsChange,
+	onToggleRelationDone,
+	onOpenTask,
+	onCreateSubtask,
+	createSubtaskDisabled,
+}: {
+	subtasks: TaskRelationItem[]
+	subtaskIds: string[]
+	prerequisites: TaskRelationItem[]
+	prerequisiteIds: string[]
+	options: Array<{ value: string; label: string }>
+	isPending?: boolean
+	togglingRelationId?: string | null
+	onSubtaskLinksChange: (next: string[]) => void
+	onRemoveSubtask: (subtaskId: string) => void
+	onPrerequisiteIdsChange: (next: string[]) => void
+	onToggleRelationDone: (item: TaskRelationItem) => void
+	onOpenTask: (id: string) => void
+	onCreateSubtask: () => void
+	createSubtaskDisabled?: boolean
+}) {
+	const [subtaskPickerOpen, setSubtaskPickerOpen] = useState(false)
+	const [parentPickerOpen, setParentPickerOpen] = useState(false)
+	const addSubtaskBtnRef = useRef<HTMLButtonElement>(null)
+	const connectParentBtnRef = useRef<HTMLButtonElement>(null)
+	const excludedFromParent = new Set([
+		...subtaskIds,
+		...subtasks.map((s) => s.id),
+	])
+	const parentOptions = options.filter(
+		(o) => !excludedFromParent.has(o.value)
+	)
+
+	return (
+		<div className="grid grid-cols-1 sm:grid-cols-[1fr_1px_1fr] gap-x-4 gap-y-6 items-stretch">
+			<div className="min-w-0">
+				<PropertyRowStacked icon={<IconSubtasks />} label="Underopgaver">
+					<div className="space-y-2">
+						<div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+							<button
+								ref={addSubtaskBtnRef}
+								type="button"
+								onClick={() => setSubtaskPickerOpen(true)}
+								disabled={isPending}
+								className={relationActionButtonClass}
+							>
+								<span className="leading-none text-slate-500" aria-hidden>
+									+
+								</span>
+								Forbind til underopgave
+							</button>
+							<button
+								type="button"
+								onClick={onCreateSubtask}
+								disabled={createSubtaskDisabled || isPending}
+								className={relationActionButtonClass}
+							>
+								<span className="leading-none text-slate-500" aria-hidden>
+									+
+								</span>
+								Opret underopgave
+							</button>
+						</div>
+						<SearchableMultiSelect
+							headless
+							isOpen={subtaskPickerOpen}
+							onOpenChange={setSubtaskPickerOpen}
+							anchorRef={addSubtaskBtnRef}
+							value={subtaskIds}
+							onChange={onSubtaskLinksChange}
+							options={options}
+							placeholder="Ingen"
+							searchPlaceholder="Søg underopgaver..."
+						/>
+						{subtasks.length > 0 && (
+							<ul>
+								{subtasks.map((item) => (
+									<TaskRelationListRow
+										key={item.id}
+										item={item}
+										onOpen={() => onOpenTask(item.id)}
+										onRemove={() => onRemoveSubtask(item.id)}
+										onToggleDone={() => onToggleRelationDone(item)}
+										isTogglingDone={togglingRelationId === item.id}
+										isPending={isPending}
+										isRemovePending={isPending}
+									/>
+								))}
+							</ul>
+						)}
+					</div>
+				</PropertyRowStacked>
+			</div>
+
+			<div className="hidden sm:block border-l border-white/10 self-stretch" />
+
+			<div className="min-w-0">
+				<PropertyRowStacked icon={<IconParentTask />} label="Hovedopgave">
+					<div className="space-y-2">
+						<button
+							ref={connectParentBtnRef}
+							type="button"
+							onClick={() => setParentPickerOpen(true)}
+							disabled={isPending}
+							className={relationActionButtonClass}
+						>
+							<span className="leading-none text-slate-500" aria-hidden>
+								+
+							</span>
+							Forbind til hovedopgave
+						</button>
+						<SearchableMultiSelect
+							headless
+							isOpen={parentPickerOpen}
+							onOpenChange={setParentPickerOpen}
+							anchorRef={connectParentBtnRef}
+							value={prerequisiteIds}
+							onChange={onPrerequisiteIdsChange}
+							options={parentOptions}
+							placeholder="Ingen"
+							searchPlaceholder="Søg hovedopgave..."
+						/>
+						{prerequisites.length > 0 && (
+							<ul>
+								{prerequisites.map((item) => (
+									<TaskRelationListRow
+										key={item.id}
+										item={item}
+										canToggleDone={false}
+										onOpen={() => onOpenTask(item.id)}
+										onRemove={() =>
+											onPrerequisiteIdsChange(
+												prerequisiteIds.filter((id) => id !== item.id)
+											)
+										}
+										isRemovePending={isPending}
+									/>
+								))}
+							</ul>
+						)}
+					</div>
+				</PropertyRowStacked>
+			</div>
+		</div>
+	)
+}
+
 export interface TaskOverlayProps {
   taskId: string | null
   onClose: () => void
 }
 
 export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
-  const router = useRouter()
+  const openTaskModal = useOpenTaskModal()
+  const queryClient = useQueryClient()
+  const { openAddTaskModal } = useAddTaskModal()
   const showToast = useToast()
   const { data: task, isLoading: taskLoading } = useTask(taskId)
   const { data: allTasks = [] } = useAllTasks(!!taskId)
@@ -530,10 +1005,12 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   const reParseTask = useReParseTask()
   const [form, setForm] = useState<TaskFormState>(emptyForm)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false)
   const [recurrenceSubmenuOpen, setRecurrenceSubmenuOpen] = useState(false)
   const [isCompleting, setIsCompleting] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
   const actionsRef = useRef<HTMLDivElement>(null)
+  const saveMenuRef = useRef<HTMLDivElement>(null)
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const recurrenceLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -553,16 +1030,39 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   }
 
   const MODAL_CLOSE_MS = 180
+  const isClosingRef = useRef(false)
 
   const closeWithAnimation = useCallback(() => {
-    if (isClosing) return
+    if (isClosingRef.current) return
+    isClosingRef.current = true
     setIsClosing(true)
     closeTimeoutRef.current = setTimeout(() => {
       onClose()
+      isClosingRef.current = false
       setIsClosing(false)
       closeTimeoutRef.current = null
     }, MODAL_CLOSE_MS)
-  }, [onClose, isClosing])
+  }, [onClose])
+
+  useEffect(() => {
+    registerAppModalCloser('task', closeWithAnimation)
+    return () => registerAppModalCloser('task', null)
+  }, [closeWithAnimation])
+
+  useEffect(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current)
+      closeTimeoutRef.current = null
+    }
+    isClosingRef.current = false
+    setIsClosing(false)
+    closeAppModal('addTask')
+    setDoneConfirmOpen(false)
+    setDependentsConfirm(null)
+    pendingDependentsProceedRef.current = null
+    setActionsOpen(false)
+    setSaveMenuOpen(false)
+  }, [taskId])
 
   useEffect(() => {
     return () => {
@@ -579,6 +1079,9 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
         setActionsOpen(false)
         setRecurrenceSubmenuOpen(false)
       }
+      if (saveMenuRef.current && !saveMenuRef.current.contains(e.target as Node)) {
+        setSaveMenuOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -588,6 +1091,12 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   const [tagIds, setTagIds] = useState<string[]>([])
   const [displayTags, setDisplayTags] = useState<Array<{ id: string; name: string; color: string }>>([])
   const [doneConfirmOpen, setDoneConfirmOpen] = useState(false)
+  const [dependentsConfirm, setDependentsConfirm] =
+    useState<DependentsConfirmState | null>(null)
+  const [togglingRelationId, setTogglingRelationId] = useState<string | null>(
+    null
+  )
+  const pendingDependentsProceedRef = useRef<(() => void) | null>(null)
   const [timeTrackingLoading, setTimeTrackingLoading] = useState(false)
   const [timeTrackingConfirmed, setTimeTrackingConfirmed] = useState(false)
   const backdropClickedRef = useRef(false)
@@ -719,11 +1228,18 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
   useEffect(() => {
     if (!taskId) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeWithAnimation()
+      if (e.key !== 'Escape') return
+      if (dependentsConfirm) {
+        setDependentsConfirm(null)
+        pendingDependentsProceedRef.current = null
+        setIsCompleting(false)
+        return
+      }
+      closeWithAnimation()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [taskId, closeWithAnimation])
+  }, [taskId, closeWithAnimation, dependentsConfirm])
 
   const update = (patch: Partial<TaskFormState>) =>
     setForm((prev) => ({ ...prev, ...patch }))
@@ -758,37 +1274,383 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
     setDisplayTags((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleSaveAndQualify = () => {
-    if (!task || !form.type.trim() || !form.durationBucket.trim()) return
-    const payload = {
-      id: task.id,
-      title: form.title.trim() || undefined,
-      notes: form.notes.trim() || undefined,
-      customerId: form.customerId || null,
-      type: form.type || null,
-      importance: form.importance === '' ? undefined : Number(form.importance),
-      urgency: form.urgency === '' ? undefined : Number(form.urgency),
-      durationBucket: form.durationBucket,
-      dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null,
-      delegatedToId: form.delegatedToId || null,
-      url: form.url.trim() || null,
-      tagIds,
-      status: 'qualified',
-    }
-    updateTask.mutate(payload, {
-      onSuccess: () => {
-        showToast('Gemt!')
-        closeWithAnimation()
-      },
-    })
+  const canSaveForm =
+    Boolean(task) &&
+    Boolean(form.type.trim()) &&
+    Boolean(form.durationBucket.trim())
+
+  const prerequisiteIds =
+    (
+      task as {
+        dependencies?: Array<{ dependsOnTask: { id: string } }>
+      } | undefined
+    )?.dependencies?.map((d) => d.dependsOnTask.id) ?? []
+
+  const hasPrerequisites = prerequisiteIds.length > 0
+
+  const taskDependents =
+    (
+      task as {
+        dependents?: Array<{ task: { id: string; title: string | null } }>
+      } | undefined
+    )?.dependents?.map((d) => d.task) ?? []
+  const hasDependents = taskDependents.length > 0
+
+  const saveDisabled =
+    taskLoading ||
+    !canSaveForm ||
+    updateTask.isPending ||
+    syncTaskUrgency.isPending
+
+  const syncModalFromSavedTask = useCallback(
+    (data: SavedTaskResponse) => {
+      setForm(formFromTask(data))
+      const tt = data.taskTags
+      if (tt && tt.length > 0) {
+        setTagIds(tt.map((t) => t.tagId))
+        setDisplayTags(
+          tt.map((t) => ({
+            id: t.tag.id,
+            name: t.tag.name,
+            color: t.tag.color,
+          }))
+        )
+      }
+      queryClient.setQueryData(['task', data.id], data)
+    },
+    [queryClient]
+  )
+
+  const buildSavePayload = useCallback(
+    (status: 'qualified' | 'done') => {
+      if (!task) return null
+      return {
+        id: task.id,
+        title: form.title.trim() || undefined,
+        notes: form.notes.trim() || undefined,
+        customerId: form.customerId || null,
+        type: form.type || null,
+        importance:
+          form.importance === '' ? undefined : Number(form.importance),
+        urgency: form.urgency === '' ? undefined : Number(form.urgency),
+        durationBucket: form.durationBucket,
+        dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null,
+        delegatedToId: form.delegatedToId || null,
+        url: form.url.trim() || null,
+        tagIds,
+        status,
+      }
+    },
+    [task, form, tagIds]
+  )
+
+  const performSave = useCallback(
+    (
+      status: 'qualified' | 'done',
+      options?: { close?: boolean; toastMessage?: string }
+    ) => {
+      const payload = buildSavePayload(status)
+      if (!payload) return
+      if (status === 'done') setIsCompleting(true)
+      setSaveMenuOpen(false)
+      setDoneConfirmOpen(false)
+      updateTask.mutate(payload, {
+        onSuccess: (data) => {
+          syncModalFromSavedTask(data)
+          if (status === 'done') {
+            const spawned = data.spawnedTask
+            if (spawned?.dueAt) {
+              const d = new Date(spawned.dueAt)
+              const day = String(d.getDate()).padStart(2, '0')
+              const month = String(d.getMonth() + 1).padStart(2, '0')
+              const h = String(d.getHours()).padStart(2, '0')
+              const m = String(d.getMinutes()).padStart(2, '0')
+              showToast(
+                options?.toastMessage ??
+                  `Gemt og udført! Næste opgave oprettet til ${day}/${month} ${h}.${m}`
+              )
+            } else {
+              showToast(options?.toastMessage ?? 'Gemt og udført!')
+            }
+            if (options?.close) {
+              setTimeout(() => onClose(), 550)
+            }
+          } else {
+            showToast(options?.toastMessage ?? 'Gemt!')
+            if (options?.close) closeWithAnimation()
+          }
+        },
+        onError: (err) => {
+          setIsCompleting(false)
+          showToast(
+            err instanceof Error ? err.message : 'Kunne ikke gemme opgave'
+          )
+        },
+      })
+    },
+    [
+      buildSavePayload,
+      updateTask,
+      syncModalFromSavedTask,
+      showToast,
+      closeWithAnimation,
+      onClose,
+    ]
+  )
+
+  const handleSave = () => performSave('qualified')
+
+  const handleSaveAndClose = () =>
+    performSave('qualified', { close: true, toastMessage: 'Gemt og lukket' })
+
+  const saveThenCreate = useCallback(
+    (mode: 'new' | 'child' | 'sibling') => {
+      const payload = buildSavePayload('qualified')
+      if (!payload) return
+      setSaveMenuOpen(false)
+      updateTask.mutate(payload, {
+        onSuccess: (data) => {
+          syncModalFromSavedTask(data)
+          showToast('Gemt!')
+          closeWithAnimation()
+          const parentTitle =
+            data.title?.trim() || form.title.trim() || 'opgave'
+          setTimeout(() => {
+            if (mode === 'new') {
+              openAddTaskModal()
+              return
+            }
+            if (mode === 'child') {
+              openAddTaskModal({
+                dependencyIds: [data.id],
+                contextHint: `Ny opgave under: ${parentTitle}`,
+              })
+              return
+            }
+            const siblingDeps =
+              data.dependencies?.map((d) => d.dependsOnTask.id) ??
+              prerequisiteIds
+            openAddTaskModal({
+              dependencyIds: siblingDeps,
+              contextHint:
+                `Opret søskendeopgave til: ${parentTitle}`,
+            })
+          }, MODAL_CLOSE_MS)
+        },
+        onError: (err) => {
+          showToast(
+            err instanceof Error ? err.message : 'Kunne ikke gemme opgave'
+          )
+        },
+      })
+    },
+    [
+      buildSavePayload,
+      updateTask,
+      syncModalFromSavedTask,
+      showToast,
+      prerequisiteIds,
+      closeWithAnimation,
+      openAddTaskModal,
+      form.title,
+    ]
+  )
+
+  const getOtherTaskPrerequisiteIds = useCallback(
+    (otherTaskId: string) => {
+      const other = (
+        allTasks as Array<{
+          id: string
+          dependencies?: Array<{ dependsOnTask: { id: string } }>
+        }>
+      ).find((t) => t.id === otherTaskId)
+      return other?.dependencies?.map((d) => d.dependsOnTask.id) ?? []
+    },
+    [allTasks]
+  )
+
+  const removeSubtaskFromParentCache = useCallback(
+    (subtaskId: string) => {
+      if (!task) return
+      queryClient.setQueryData<SavedTaskResponse>(['task', task.id], (old) => {
+        if (!old?.dependents) return old
+        return {
+          ...old,
+          dependents: old.dependents.filter((d) => d.task.id !== subtaskId),
+        }
+      })
+    },
+    [task, queryClient]
+  )
+
+  const handleSubtaskLinksChange = useCallback(
+    (nextSubtaskIds: string[]) => {
+      if (!task) return
+      const currentIds =
+        (
+          task as { dependents?: Array<{ task: { id: string } }> }
+        ).dependents?.map((d) => d.task.id) ?? []
+      const added = nextSubtaskIds.filter((id) => !currentIds.includes(id))
+      const removed = currentIds.filter((id) => !nextSubtaskIds.includes(id))
+
+      for (const subtaskId of added) {
+        const deps = getOtherTaskPrerequisiteIds(subtaskId)
+        if (deps.includes(task.id)) continue
+        updateTask.mutate({
+          id: subtaskId,
+          dependencyIds: [...deps, task.id],
+          previousDependencyIds: deps,
+          invalidateTaskIds: [task.id],
+        })
+      }
+      for (const subtaskId of removed) {
+        const deps = getOtherTaskPrerequisiteIds(subtaskId)
+        removeSubtaskFromParentCache(subtaskId)
+        updateTask.mutate({
+          id: subtaskId,
+          dependencyIds: deps.filter((depId) => depId !== task.id),
+          previousDependencyIds: deps,
+          invalidateTaskIds: [task.id],
+        })
+      }
+    },
+    [
+      task,
+      getOtherTaskPrerequisiteIds,
+      updateTask,
+      removeSubtaskFromParentCache,
+    ]
+  )
+
+  const handleRemoveSubtask = useCallback(
+    (subtaskId: string) => {
+      if (!task) return
+      const deps = getOtherTaskPrerequisiteIds(subtaskId)
+      removeSubtaskFromParentCache(subtaskId)
+      updateTask.mutate(
+        {
+          id: subtaskId,
+          dependencyIds: deps.filter((depId) => depId !== task.id),
+          previousDependencyIds: deps,
+          invalidateTaskIds: [task.id],
+        },
+        {
+          onError: () => {
+            queryClient.invalidateQueries({ queryKey: ['task', task.id] })
+          },
+        }
+      )
+    },
+    [
+      task,
+      getOtherTaskPrerequisiteIds,
+      updateTask,
+      removeSubtaskFromParentCache,
+      queryClient,
+    ]
+  )
+
+  const withDependentsWarning = useCallback(
+    (
+      action: DependentsConfirmAction,
+      proceed: () => void,
+      dependents: Array<{ id: string; title: string | null }> = taskDependents
+    ) => {
+      if (dependents.length === 0) {
+        proceed()
+        return
+      }
+      setDoneConfirmOpen(false)
+      pendingDependentsProceedRef.current = proceed
+      setDependentsConfirm({ action, dependents })
+    },
+    [taskDependents]
+  )
+
+  const handleDependentsConfirmCancel = () => {
+    setDependentsConfirm(null)
+    pendingDependentsProceedRef.current = null
+    setIsCompleting(false)
+    setTogglingRelationId(null)
   }
 
-  const handleDelete = () => {
+  const performRelationStatusUpdate = useCallback(
+    (targetId: string, status: 'done' | 'qualified') => {
+      setTogglingRelationId(targetId)
+      updateTask.mutate(
+        { id: targetId, status },
+        {
+          onSuccess: () => {
+            showToast(
+              status === 'done' ? 'Opgave udført!' : 'Opgave gendannet'
+            )
+            setTogglingRelationId(null)
+            if (taskId) {
+              queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+            }
+          },
+          onError: (err) => {
+            showToast(
+              err instanceof Error
+                ? err.message
+                : 'Kunne ikke opdatere opgave'
+            )
+            setTogglingRelationId(null)
+          },
+        }
+      )
+    },
+    [updateTask, showToast, taskId, queryClient]
+  )
+
+  const handleRelationToggleDone = useCallback(
+    (item: TaskRelationItem) => {
+      if (item.status === 'done') {
+        performRelationStatusUpdate(item.id, 'qualified')
+        return
+      }
+      const incompleteDependents = (item.dependents ?? []).filter(
+        (d) => d.status !== 'done'
+      )
+      withDependentsWarning(
+        'relationMarkDone',
+        () => performRelationStatusUpdate(item.id, 'done'),
+        incompleteDependents.map((d) => ({
+          id: d.id,
+          title: d.title,
+        }))
+      )
+    },
+    [performRelationStatusUpdate, withDependentsWarning]
+  )
+
+  const handleDependentsConfirmProceed = () => {
+    setDependentsConfirm(null)
+    const proceed = pendingDependentsProceedRef.current
+    pendingDependentsProceedRef.current = null
+    proceed?.()
+  }
+
+  const executeDelete = () => {
     if (!task) return
-    if (!confirm('Er du sikker på at du vil slette denne opgave?')) return
     deleteTask.mutate(task.id, {
       onSuccess: () => closeWithAnimation(),
     })
+  }
+
+  const handleSaveAndMarkDone = () =>
+    withDependentsWarning('markDoneSave', () =>
+      performSave('done', { close: true })
+    )
+
+  const handleDelete = () => {
+    if (!task) return
+    if (!hasDependents) {
+      if (!confirm('Er du sikker på at du vil slette denne opgave?')) return
+      executeDelete()
+      return
+    }
+    withDependentsWarning('delete', executeDelete)
   }
 
   const performMarkDone = () => {
@@ -823,45 +1685,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
       setDoneConfirmOpen(true)
       return
     }
-    performMarkDone()
-  }
-
-  const handleSaveAndMarkDone = () => {
-    if (!task || !form.type.trim() || !form.durationBucket.trim()) return
-    const payload = {
-      id: task.id,
-      title: form.title.trim() || undefined,
-      notes: form.notes.trim() || undefined,
-      customerId: form.customerId || null,
-      type: form.type || null,
-      importance: form.importance === '' ? undefined : Number(form.importance),
-      urgency: form.urgency === '' ? undefined : Number(form.urgency),
-      durationBucket: form.durationBucket,
-      dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null,
-      delegatedToId: form.delegatedToId || null,
-      url: form.url.trim() || null,
-      tagIds,
-      status: 'done',
-    }
-    setIsCompleting(true)
-    setDoneConfirmOpen(false)
-    updateTask.mutate(payload, {
-      onSuccess: (data: { spawnedTask?: { id: string; dueAt: string } }) => {
-        const spawned = data.spawnedTask
-        if (spawned?.dueAt) {
-          const d = new Date(spawned.dueAt)
-          const day = String(d.getDate()).padStart(2, '0')
-          const month = String(d.getMonth() + 1).padStart(2, '0')
-          const h = String(d.getHours()).padStart(2, '0')
-          const m = String(d.getMinutes()).padStart(2, '0')
-          showToast(`Gemt og udført! Næste opgave oprettet til ${day}/${month} ${h}.${m}`)
-        } else {
-          showToast('Gemt og udført!')
-        }
-        setTimeout(() => onClose(), 550)
-      },
-      onError: () => setIsCompleting(false),
-    })
+    withDependentsWarning('markDone', performMarkDone)
   }
 
   const handleRestore = () => {
@@ -952,7 +1776,13 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
         if (e.target === e.currentTarget) backdropClickedRef.current = true
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget && backdropClickedRef.current) closeWithAnimation()
+        if (dependentsConfirm || doneConfirmOpen) {
+          backdropClickedRef.current = false
+          return
+        }
+        if (e.target === e.currentTarget && backdropClickedRef.current) {
+          closeWithAnimation()
+        }
         backdropClickedRef.current = false
       }}
     >
@@ -983,6 +1813,75 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
             </svg>
           </div>
         )}
+        {dependentsConfirm && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-black/80 backdrop-blur-sm p-4"
+            aria-modal="true"
+            role="alertdialog"
+            aria-labelledby="dependents-confirm-title"
+          >
+            <div className="bg-app-card border border-amber-500/25 rounded-xl2 p-5 shadow-card max-w-md w-full">
+              <h3
+                id="dependents-confirm-title"
+                className="text-base font-medium text-amber-200 mb-2"
+              >
+                {dependentsConfirm.action === 'delete'
+                  ? 'Slet opgave med underopgaver?'
+                  : dependentsConfirm.action === 'relationMarkDone'
+                    ? 'Marker opgave som færdig?'
+                    : 'Marker hovedopgave som færdig?'}
+              </h3>
+              <p className="text-sm text-slate-300 mb-3">
+                {dependentsConfirm.dependents.length === 1
+                  ? '1 underopgave afhænger af denne opgave:'
+                  : `${dependentsConfirm.dependents.length} underopgaver afhænger af denne opgave:`}
+              </p>
+              <ul className="text-sm text-slate-200 mb-4 space-y-1 max-h-32 overflow-auto">
+                {dependentsConfirm.dependents.slice(0, 6).map((d) => (
+                  <li key={d.id} className="truncate pl-3 border-l border-white/10">
+                    {d.title?.trim() || '(Uden titel)'}
+                  </li>
+                ))}
+                {dependentsConfirm.dependents.length > 6 && (
+                  <li className="text-app-muted text-xs pl-3">
+                    + {dependentsConfirm.dependents.length - 6} flere
+                  </li>
+                )}
+              </ul>
+              <p className="text-sm text-slate-400 mb-4">
+                {dependentsConfirm.action === 'delete'
+                  ? 'Underopgaverne bliver ikke slettet, men mister denne afhængighed.'
+                  : 'Underopgaverne kan stadig være blokeret, indtil de selv er færdige.'}
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={handleDependentsConfirmProceed}
+                  disabled={updateTask.isPending || deleteTask.isPending}
+                  className={cn(
+                    'w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50',
+                    dependentsConfirm.action === 'delete'
+                      ? 'bg-red-700/80 hover:bg-red-600 text-white'
+                      : 'bg-emerald-700/80 hover:bg-emerald-600 text-white'
+                  )}
+                >
+                  {dependentsConfirm.action === 'delete'
+                    ? 'Ja, slet hovedopgaven'
+                    : dependentsConfirm.action === 'markDoneSave'
+                      ? 'Gem og marker som færdig'
+                      : 'Ja, marker som færdig'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDependentsConfirmCancel}
+                  className="w-full text-app-muted hover:text-slate-200 px-4 py-2 rounded-lg text-sm transition-colors"
+                >
+                  Annuller
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {doneConfirmOpen && (
           <div
             className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-black/80 backdrop-blur-sm p-4"
@@ -1004,11 +1903,13 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                   disabled={updateTask.isPending || !form.type.trim() || !form.durationBucket.trim()}
                   className="w-full bg-emerald-700/80 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                 >
-                  Gem og markér udført
+                  Gem og marker som færdig
                 </button>
                 <button
                   type="button"
-                  onClick={performMarkDone}
+                  onClick={() =>
+                    withDependentsWarning('markDone', performMarkDone)
+                  }
                   disabled={updateTask.isPending}
                   className="w-full bg-white/10 hover:bg-white/15 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-white/10 disabled:opacity-50"
                 >
@@ -1029,7 +1930,10 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
         <div className="flex items-center justify-between gap-2 sm:gap-3 shrink-0 px-3 sm:px-4 py-3 border-b border-white/10 bg-slate-900/40">
           <button
             type="button"
-            onClick={closeWithAnimation}
+            onClick={() => {
+              if (dependentsConfirm || doneConfirmOpen) return
+              closeWithAnimation()
+            }}
             className="shrink-0 p-2 rounded-lg border border-white/10 bg-white/5 text-app-muted hover:text-slate-200 hover:bg-white/10 transition-colors duration-200 ease-out"
             aria-label="Luk"
           >
@@ -1120,13 +2024,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                             disabled={updateTask.isPending}
                             className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50 flex items-center gap-2"
                           >
-                            {task.status === 'udvikling' ? (
-                              <svg className="w-4 h-4 text-app-accent shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            ) : (
-                              <span className="w-4 shrink-0" aria-hidden />
-                            )}
+                            <MenuCheckIndicator checked={task.status === 'udvikling'} />
                             På udviklingslisten
                           </button>
                         </li>
@@ -1188,13 +2086,7 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                                         disabled={updateTask.isPending}
                                         className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50 flex items-center gap-2"
                                       >
-                                        {isActive ? (
-                                          <svg className="w-4 h-4 text-app-accent shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
-                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                          </svg>
-                                        ) : (
-                                          <span className="w-4 shrink-0" aria-hidden />
-                                        )}
+                                        <MenuCheckIndicator checked={isActive} />
                                         {label}
                                       </button>
                                     </li>
@@ -1214,13 +2106,12 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                                     disabled={updateTask.isPending}
                                     className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50 flex items-center gap-2"
                                   >
-                                    {(task as { recurrenceRule?: string | null }).recurrenceRule == null ? (
-                                      <svg className="w-4 h-4 text-app-accent shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
-                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                      </svg>
-                                    ) : (
-                                      <span className="w-4 shrink-0" aria-hidden />
-                                    )}
+                                    <MenuCheckIndicator
+                                      checked={
+                                        (task as { recurrenceRule?: string | null })
+                                          .recurrenceRule == null
+                                      }
+                                    />
                                     Ingen
                                   </button>
                                 </li>
@@ -1244,30 +2135,117 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V7a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSaveAndQualify}
-                  disabled={taskLoading || !form.type.trim() || !form.durationBucket.trim() || updateTask.isPending || syncTaskUrgency.isPending}
-                  className={cn(
-                    'shrink-0 p-2 rounded-lg border transition-colors duration-200 ease-out disabled:opacity-50',
-                    hasUnsavedChanges
-                      ? 'border-blue-500/40 bg-blue-600/90 text-white hover:bg-blue-500'
-                      : 'border-white/10 bg-white/5 text-blue-500 hover:text-blue-400 hover:bg-white/10'
-                  )}
-                  aria-label="Gem"
-                  title="Gem"
-                >
-                  {(updateTask.isPending || syncTaskUrgency.isPending) ? (
-                    <svg className={cn('w-4 h-4 animate-spin', hasUnsavedChanges ? 'text-white' : 'text-blue-500')} fill="none" viewBox="0 0 24 24" aria-hidden>
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                <div className="relative shrink-0 flex" ref={saveMenuRef}>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saveDisabled}
+                    className={cn(
+                      'shrink-0 p-2 rounded-l-lg border border-r-0 transition-colors duration-200 ease-out disabled:opacity-50',
+                      hasUnsavedChanges
+                        ? 'border-blue-500/40 bg-blue-600/90 text-white hover:bg-blue-500'
+                        : 'border-white/10 bg-white/5 text-blue-500 hover:text-blue-400 hover:bg-white/10'
+                    )}
+                    aria-label="Gem"
+                    title="Gem"
+                  >
+                    {updateTask.isPending || syncTaskUrgency.isPending ? (
+                      <svg className={cn('w-4 h-4 animate-spin', hasUnsavedChanges ? 'text-white' : 'text-blue-500')} fill="none" viewBox="0 0 24 24" aria-hidden>
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                    ) : (
+                      <svg className={cn('w-4 h-4', hasUnsavedChanges ? 'text-white' : 'text-blue-500')} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                        <path d="M13.9,4.6l-2.5-2.5C11.3,2.1,11.1,2,11,2H3C2.4,2,2,2.4,2,3v10c0,0.6,0.4,1,1,1h10c0.6,0,1-0.4,1-1V5C14,4.9,13.9,4.7,13.9,4.6z M6,3h4v2H6V3z M10,13H6V9h4V13z M11,13V9c0-0.6-0.4-1-1-1H6C5.4,8,5,8.4,5,9v4H3V3h2v2c0,0.6,0.4,1,1,1h4c0.6,0,1-0.4,1-1V3.2l2,2V13H11z" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSaveMenuOpen((o) => !o)}
+                    disabled={saveDisabled}
+                    className={cn(
+                      'shrink-0 px-1.5 py-2 rounded-r-lg border transition-colors duration-200 ease-out disabled:opacity-50',
+                      hasUnsavedChanges
+                        ? 'border-blue-500/40 bg-blue-600/90 text-white hover:bg-blue-500'
+                        : 'border-white/10 bg-white/5 text-blue-500 hover:text-blue-400 hover:bg-white/10',
+                      saveMenuOpen && (hasUnsavedChanges ? 'bg-blue-500' : 'bg-white/10')
+                    )}
+                    aria-label="Flere gem-valgmuligheder"
+                    aria-expanded={saveMenuOpen}
+                    aria-haspopup="menu"
+                    title="Flere gem-valgmuligheder"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
-                  ) : (
-                    <svg className={cn('w-4 h-4', hasUnsavedChanges ? 'text-white' : 'text-blue-500')} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-                      <path d="M13.9,4.6l-2.5-2.5C11.3,2.1,11.1,2,11,2H3C2.4,2,2,2.4,2,3v10c0,0.6,0.4,1,1,1h10c0.6,0,1-0.4,1-1V5C14,4.9,13.9,4.7,13.9,4.6z M6,3h4v2H6V3z M10,13H6V9h4V13z M11,13V9c0-0.6-0.4-1-1-1H6C5.4,8,5,8.4,5,9v4H3V3h2v2c0,0.6,0.4,1,1,1h4c0.6,0,1-0.4,1-1V3.2l2,2V13H11z" />
-                    </svg>
+                  </button>
+                  {saveMenuOpen && (
+                    <ul
+                      role="menu"
+                      className="absolute right-0 top-full mt-1 min-w-[15rem] max-w-[20rem] rounded-lg border border-white/10 app-dropdown-gradient shadow-lg py-1 z-[70] animate-[dropdownIn_150ms_ease-out_forwards]"
+                    >
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={handleSaveAndClose}
+                          disabled={updateTask.isPending}
+                          className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50"
+                        >
+                          Gem og luk
+                        </button>
+                      </li>
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => saveThenCreate('new')}
+                          disabled={updateTask.isPending}
+                          className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50"
+                        >
+                          Gem og opret ny opgave
+                        </button>
+                      </li>
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => saveThenCreate('child')}
+                          disabled={updateTask.isPending}
+                          className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50"
+                        >
+                          Gem og opret underopgave
+                        </button>
+                      </li>
+                      {hasPrerequisites && (
+                        <li role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => saveThenCreate('sibling')}
+                            disabled={updateTask.isPending}
+                            className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50"
+                          >
+                            Gem og opret søskendeopgave
+                          </button>
+                        </li>
+                      )}
+                      <li role="separator" className="my-1 border-t border-white/5" />
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={handleSaveAndMarkDone}
+                          disabled={updateTask.isPending}
+                          className="w-full px-3 py-2 text-left text-sm text-emerald-300 hover:bg-white/5 transition-colors duration-200 ease-out disabled:opacity-50"
+                        >
+                          Gem og marker som færdig
+                        </button>
+                      </li>
+                    </ul>
                   )}
-                </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => void handleStartTimeTracking()}
@@ -1398,9 +2376,12 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
               </PropertyRowStacked>
               <PropertyRowStacked icon={<IconFileText />} label="Beskrivelse">
                 <TaskDescriptionField
+                  key={taskId ?? 'no-task'}
                   value={form.notes}
                   onChange={(notes) => update({ notes })}
                   isLoading={taskLoading}
+                  dismissExpanded={doneConfirmOpen}
+                  onBeforeExpand={() => setDoneConfirmOpen(false)}
                   loadingText={LOADING.description}
                 />
               </PropertyRowStacked>
@@ -1781,28 +2762,49 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
               </div>
             </section>
 
-            {/* Dependencies */}
+            {/* Opgaverelationer */}
             {task && (
-              <section className="space-y-2 border-t border-white/15 pt-4 mt-4 [&>*:first-child]:pt-0">
-                <PropertyRowStacked icon={<IconLink />} label="Dependencies">
-                  {(() => {
-                    const deps =
-                      (task as unknown as {
-                        dependencies?: Array<{
-                          dependsOnTask: { id: string; title: string | null; status: string | null }
-                        }>
-                      }).dependencies ?? []
-                    const dependents =
-                      (task as unknown as {
+              <section className="border-t border-white/15 pt-4 mt-4">
+                  <TaskRelationsEditor
+                    subtasks={(
+                      (task as {
                         dependents?: Array<{
-                          task: { id: string; title: string | null; status: string | null }
+                          task: {
+                            id: string
+                            title: string | null
+                            status: string | null
+                            dependents?: Array<{
+                              task: TaskRelationDependent
+                            }>
+                          }
                         }>
                       }).dependents ?? []
-                    const dependencyIds = deps.map((d) => d.dependsOnTask.id)
-                    const isLocked = Boolean((task as { isLocked?: boolean }).isLocked)
-                    const lockOverride = Boolean((task as { lockOverride?: boolean }).lockOverride)
-
-                    const options = (Array.isArray(allTasks) ? allTasks : [])
+                    ).map((d) => mapRelationTask(d.task))}
+                    subtaskIds={(
+                      (task as {
+                        dependents?: Array<{ task: { id: string } }>
+                      }).dependents ?? []
+                    ).map((d) => d.task.id)}
+                    prerequisites={(
+                      (task as {
+                        dependencies?: Array<{
+                          dependsOnTask: {
+                            id: string
+                            title: string | null
+                            status: string | null
+                            dependents?: Array<{
+                              task: TaskRelationDependent
+                            }>
+                          }
+                        }>
+                      }).dependencies ?? []
+                    ).map((d) => mapRelationTask(d.dependsOnTask))}
+                    prerequisiteIds={(
+                      (task as {
+                        dependencies?: Array<{ dependsOnTask: { id: string } }>
+                      }).dependencies ?? []
+                    ).map((d) => d.dependsOnTask.id)}
+                    options={(Array.isArray(allTasks) ? allTasks : [])
                       .filter((t: { id?: string; status?: string | null }) => {
                         if (!t?.id) return false
                         if (t.id === task.id) return false
@@ -1812,108 +2814,26 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                       .map((t: { id: string; title?: string | null }) => ({
                         value: t.id,
                         label: t.title?.trim() || '(Uden titel)',
-                      }))
-
-                    return (
-                      <div className="space-y-3">
-                        {isLocked && !lockOverride && (
-                          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm">
-                            Denne opgave er blokeret af uafsluttede dependencies.
-                          </div>
-                        )}
-
-                        <div>
-                          <label className="text-xs text-app-muted block mb-1.5">
-                            Denne opgave afhænger af
-                          </label>
-                          <SearchableMultiSelect
-                            value={dependencyIds}
-                            onChange={(next) =>
-                              updateTask.mutate({
-                                id: task.id,
-                                dependencyIds: next,
-                              })
-                            }
-                            options={options}
-                            placeholder="Ingen"
-                            searchPlaceholder="Søg opgaver..."
-                          />
-                          {deps.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              {deps.map((d) => (
-                                <button
-                                  key={d.dependsOnTask.id}
-                                  type="button"
-                                  onClick={() => router.push(`/tasks/${d.dependsOnTask.id}`)}
-                                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm text-slate-200 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
-                                  title="Åbn opgave"
-                                >
-                                  <span className="truncate max-w-[18rem]">
-                                    {d.dependsOnTask.title ?? '(Uden titel)'}
-                                  </span>
-                                  {d.dependsOnTask.status === 'done' ? (
-                                    <span className="text-emerald-300 text-xs">Done</span>
-                                  ) : (
-                                    <span className="text-amber-300 text-xs">Åben</span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={lockOverride}
-                            onChange={(e) =>
-                              updateTask.mutate({
-                                id: task.id,
-                                lockOverride: e.target.checked,
-                              })
-                            }
-                            className="rounded border-white/20 bg-slate-900/60 text-app-accent focus:ring-app-accent/40"
-                          />
-                          <span className="text-sm text-slate-200">
-                            Override lås (skjul advarsel)
-                          </span>
-                        </label>
-
-                        <div>
-                          <label className="text-xs text-app-muted block mb-1.5">
-                            Afhængige opgaver
-                          </label>
-                          {dependents.length === 0 ? (
-                            <p className="text-sm text-app-muted">Ingen.</p>
-                          ) : (
-                            <div className="flex flex-wrap gap-2">
-                              {dependents.map((d) => (
-                                <button
-                                  key={d.task.id}
-                                  type="button"
-                                  onClick={() => router.push(`/tasks/${d.task.id}`)}
-                                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm text-slate-200 bg-slate-900/40 border border-white/10 hover:bg-white/10 transition-colors"
-                                  title="Åbn opgave"
-                                >
-                                  <span className="truncate max-w-[18rem]">
-                                    {d.task.title ?? '(Uden titel)'}
-                                  </span>
-                                  {d.task.status === 'done' ? (
-                                    <span className="text-emerald-300 text-xs">Done</span>
-                                  ) : (
-                                    <span className="text-slate-400 text-xs">
-                                      {d.task.status ?? '–'}
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })()}
-                </PropertyRowStacked>
+                      }))}
+                    isPending={updateTask.isPending}
+                    togglingRelationId={togglingRelationId}
+                    onToggleRelationDone={handleRelationToggleDone}
+                    onSubtaskLinksChange={handleSubtaskLinksChange}
+                    onRemoveSubtask={handleRemoveSubtask}
+                    onPrerequisiteIdsChange={(next) =>
+                      updateTask.mutate({
+                        id: task.id,
+                        dependencyIds: next,
+                      })
+                    }
+                    onOpenTask={(id) => {
+                      if (id !== task.id) {
+                        openTaskModal(id, { replace: true })
+                      }
+                    }}
+                    onCreateSubtask={() => saveThenCreate('child')}
+                    createSubtaskDisabled={saveDisabled}
+                  />
               </section>
             )}
 

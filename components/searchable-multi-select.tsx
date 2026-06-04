@@ -6,6 +6,7 @@ import {
   useEffect,
   useLayoutEffect,
   useCallback,
+  type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
@@ -23,6 +24,11 @@ interface SearchableMultiSelectProps {
   searchPlaceholder?: string
   className?: string
   id?: string
+  /** Kun dropdown; åbn via isOpen + anchorRef */
+  headless?: boolean
+  isOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  anchorRef?: RefObject<HTMLElement | null>
 }
 
 const baseInputClass =
@@ -87,8 +93,20 @@ export function SearchableMultiSelect({
   searchPlaceholder = 'Søg...',
   className = '',
   id,
+  headless = false,
+  isOpen: isOpenControlled,
+  onOpenChange,
+  anchorRef,
 }: SearchableMultiSelectProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpenInternal, setIsOpenInternal] = useState(false)
+  const isOpen = isOpenControlled ?? isOpenInternal
+  const setIsOpen = useCallback(
+    (next: boolean) => {
+      if (onOpenChange) onOpenChange(next)
+      else setIsOpenInternal(next)
+    },
+    [onOpenChange]
+  )
   const [search, setSearch] = useState('')
   const [placement, setPlacement] = useState<DropdownPlacement | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -100,14 +118,16 @@ export function SearchableMultiSelect({
     o.label.toLowerCase().includes(search.trim().toLowerCase())
   )
 
+  const getAnchorRect = useCallback(() => {
+    const el = headless ? anchorRef?.current : containerRef.current
+    return el?.getBoundingClientRect() ?? null
+  }, [headless, anchorRef])
+
   const updatePlacement = useCallback(() => {
-    if (!containerRef.current) return
-    setPlacement(
-      computeDropdownPlacement(
-        containerRef.current.getBoundingClientRect()
-      )
-    )
-  }, [])
+    const rect = getAnchorRect()
+    if (!rect) return
+    setPlacement(computeDropdownPlacement(rect))
+  }, [getAnchorRect])
 
   useLayoutEffect(() => {
     if (!isOpen) {
@@ -128,6 +148,7 @@ export function SearchableMultiSelect({
       const target = e.target as Node
       if (
         containerRef.current?.contains(target) ||
+        anchorRef?.current?.contains(target) ||
         dropdownRef.current?.contains(target)
       ) {
         return
@@ -136,7 +157,7 @@ export function SearchableMultiSelect({
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  }, [anchorRef, setIsOpen])
 
   useEffect(() => {
     if (isOpen) {
@@ -170,53 +191,59 @@ export function SearchableMultiSelect({
     : 160
 
   return (
-    <div ref={containerRef} className={cn('relative', className)}>
-      <button
-        type="button"
-        id={id}
-        onClick={() => setIsOpen((o) => !o)}
-        className={cn(
-          'w-full flex items-center justify-between gap-2 min-h-[38px]',
-          baseInputClass,
-          'text-left cursor-pointer'
-        )}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-      >
-        <span className="flex flex-wrap gap-1.5 min-w-0">
-          {value.length > 0 ? (
-            value.map((id) => {
-              const label = options.find((o) => o.value === id)?.label ?? id
-              return (
-                <span
-                  key={id}
-                  className="inline-flex items-center px-2 py-0.5 rounded bg-app-accent/20 text-slate-200 text-xs truncate max-w-[8rem]"
-                >
-                  {label}
-                </span>
-              )
-            })
-          ) : (
-            <span className="text-app-muted">{placeholder}</span>
-          )}
-        </span>
-        <svg
+    <div
+      ref={headless ? undefined : containerRef}
+      className={cn(!headless && 'relative', className)}
+    >
+      {!headless && (
+        <button
+          type="button"
+          id={id}
+          onClick={() => setIsOpen(!isOpen)}
           className={cn(
-            'w-4 h-4 text-app-muted shrink-0 transition-transform',
-            isOpen && 'rotate-180'
+            'w-full flex items-center justify-between gap-2 min-h-[38px]',
+            baseInputClass,
+            'text-left cursor-pointer'
           )}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
-      </button>
+          <span className="flex flex-wrap gap-1.5 min-w-0">
+            {value.length > 0 ? (
+              value.map((val) => {
+                const label =
+                  options.find((o) => o.value === val)?.label ?? val
+                return (
+                  <span
+                    key={val}
+                    className="inline-flex items-center px-2 py-0.5 rounded bg-app-accent/20 text-slate-200 text-xs truncate max-w-[8rem]"
+                  >
+                    {label}
+                  </span>
+                )
+              })
+            ) : (
+              <span className="text-app-muted">{placeholder}</span>
+            )}
+          </span>
+          <svg
+            className={cn(
+              'w-4 h-4 text-app-muted shrink-0 transition-transform',
+              isOpen && 'rotate-180'
+            )}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </button>
+      )}
 
       {isOpen &&
         placement &&

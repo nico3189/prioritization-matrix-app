@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useOpenTaskModal } from '@/lib/use-open-task'
 import { TaskCard, type TaskCardTask } from '@/components/task-card'
 import { TaskTable } from '@/components/task-table'
 import { useMarkTaskDone } from '@/lib/use-mark-task-done'
@@ -24,7 +24,7 @@ function useUdviklingTasks() {
 }
 
 export default function UdviklingPage() {
-	const router = useRouter()
+	const openTask = useOpenTaskModal()
 	const [completingId, setCompletingId] = useState<string | null>(null)
 	const [sortBy, setSortBy] = useState<SortOption>('newest')
 	const [filters, setFilters] = useState<TaskListFilters>(
@@ -83,7 +83,7 @@ export default function UdviklingPage() {
 					{viewMode === 'table' ? (
 						<TaskTable
 							tasks={filteredTasks as TaskCardTask[]}
-							onTaskClick={(t) => router.push(`/tasks/${t.id}`)}
+							onTaskClick={(t) => openTask(t.id)}
 							onMarkDone={(t) => {
 								setCompletingId(t.id)
 								markDone.mutate(t.id)
@@ -96,7 +96,7 @@ export default function UdviklingPage() {
 								<TaskCard
 									key={task.id}
 									task={task as TaskCardTask}
-									onClick={() => router.push(`/tasks/${task.id}`)}
+									onClick={() => openTask(task.id)}
 									onMarkDone={() => {
 										setCompletingId(task.id)
 										markDone.mutate(task.id)

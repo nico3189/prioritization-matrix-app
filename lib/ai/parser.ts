@@ -98,7 +98,9 @@ Hvis overrideExamples er angivet: Brugeren har tidligere rettet lignende opgaver
 export async function parseSmartInput(input: ParserInput): Promise<ParserOutput> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey || apiKey.trim() === '') {
-    throw new Error('OPENAI_API_KEY er ikke sat. Tilføj den i Heroku Config Vars.')
+    throw new Error(
+      'OPENAI_API_KEY er ikke sat. Tilføj den i .env (lokalt) eller Heroku Config Vars.'
+    )
   }
   const openai = new OpenAI({ apiKey })
   const eventsStr = input.calendarEvents.length
