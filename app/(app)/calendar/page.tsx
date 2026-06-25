@@ -5,6 +5,13 @@ import { useState, useRef, useEffect } from 'react'
 import { signOut, signIn } from 'next-auth/react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/components/toast'
+import { useTimeTrackingSettings } from '@/app/(app)/settings/_lib/settings-hooks'
+import {
+	isTimeTrackingConfigured,
+	normalizeTimeTrackingSettings,
+} from '@/lib/time-tracking-settings'
+import { startTimeTracking } from '@/lib/start-time-tracking'
 
 type CalendarEvent = {
   id: string
@@ -47,6 +54,121 @@ function IconPaperAirplane() {
     <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
     </svg>
+  )
+}
+
+function IconClock() {
+  return (
+    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  )
+}
+
+function CalendarEventTimeTrackingButton({
+  event,
+  disabled: parentDisabled,
+}: {
+  event: CalendarEvent
+  disabled?: boolean
+}) {
+  const showToast = useToast()
+  const { data: timeTrackingRaw } = useTimeTrackingSettings()
+  const timeTrackingSettings = normalizeTimeTrackingSettings(timeTrackingRaw)
+  const timeTrackingReady = isTimeTrackingConfigured(timeTrackingSettings)
+  const [loading, setLoading] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
+
+  useEffect(() => {
+    if (!confirmed) return
+    const t = setTimeout(() => setConfirmed(false), 2500)
+    return () => clearTimeout(t)
+  }, [confirmed])
+
+  const title = event.summary?.trim()
+  const canStart = timeTrackingReady && Boolean(title)
+  const disabledReason = !timeTrackingReady
+    ? 'Konfigurer tidsregistrering under Indstillinger'
+    : !title
+      ? 'Begivenheden har ingen titel'
+      : ''
+
+  const handleClick = async () => {
+    if (!canStart || loading || parentDisabled || !title) return
+    setLoading(true)
+    try {
+      await startTimeTracking(title)
+      setConfirmed(true)
+      showToast('Tidsregistrering startet')
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? err.message
+          : 'Kunne ikke starte tidsregistrering'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleClick()}
+      disabled={!canStart || loading || parentDisabled}
+      className={cn(
+        'shrink-0 p-2 rounded-lg border transition-colors duration-200 ease-out disabled:opacity-50',
+        confirmed
+          ? 'border-emerald-500/40 bg-emerald-600/90 text-white'
+          : 'border-white/10 bg-white/5 text-slate-300 hover:text-white hover:bg-white/10'
+      )}
+      aria-label="Start tidsregistrering"
+      title={
+        confirmed
+          ? 'Tidsregistrering startet'
+          : disabledReason || 'Start tidsregistrering'
+      }
+    >
+      {loading ? (
+        <svg
+          className="w-4 h-4 animate-spin text-slate-300"
+          fill="none"
+          viewBox="0 0 24 24"
+          aria-hidden
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
+        </svg>
+      ) : confirmed ? (
+        <svg
+          className="w-4 h-4 text-white"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          aria-hidden
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M5 13l4 4L19 7"
+          />
+        </svg>
+      ) : (
+        <IconClock />
+      )}
+    </button>
   )
 }
 
@@ -371,6 +493,10 @@ export default function CalendarPage() {
                               <IconGoogleCalendar />
                             </a>
                           )}
+                          <CalendarEventTimeTrackingButton
+                            event={e}
+                            disabled={createTask.isPending}
+                          />
                           {!isPastEvent && (
                             <button
                               type="button"
