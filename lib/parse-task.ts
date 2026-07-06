@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db'
 import { TaskStatus, TaskType } from '@prisma/client'
 import { logTaskEvent } from '@/lib/events'
-import { parseSmartInput } from '@/lib/ai/parser'
+import { parseSmartInput, inferDurationBucketFromText } from '@/lib/ai/parser'
 import {
   computeUrgencyFromDeadline,
   computeImportanceWithContext,
@@ -288,10 +288,15 @@ export async function runParseForTask(
           kwOffsets.urgency
         )
 
+  const resolvedDurationBucket =
+    result.durationBucket ?? inferDurationBucketFromText(rawText)
+
   const updateData: Record<string, unknown> = {
     ...(title && { title }),
     type: resolvedType,
-    ...(result.durationBucket != null && { durationBucket: result.durationBucket }),
+    ...(resolvedDurationBucket != null && {
+      durationBucket: resolvedDurationBucket,
+    }),
     customerId: customerId ?? undefined,
     ...(result.canDelegate !== undefined && { canDelegate: result.canDelegate }),
     delegatedToId: delegatedToId ?? undefined,
@@ -309,7 +314,7 @@ export async function runParseForTask(
     }),
     ...(extractedUrl && { url: extractedUrl }),
   }
-  const hasDuration = Boolean(result.durationBucket)
+  const hasDuration = Boolean(resolvedDurationBucket)
   const parkOnUdviklingsliste = result.parkOnUdviklingsliste === true
   const newStatus = parkOnUdviklingsliste
     ? TaskStatus.udvikling

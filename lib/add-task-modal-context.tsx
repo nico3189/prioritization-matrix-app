@@ -12,6 +12,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePathname } from 'next/navigation'
 import { useToast } from '@/components/toast'
+import { notifyIntegrationHealthRefresh } from '@/components/integration-alerts'
 import { cn } from '@/lib/utils'
 import {
 	closeAppModal,
@@ -82,6 +83,9 @@ function useCreateTask() {
 			parentIds.forEach((parentId) => {
 				qc.invalidateQueries({ queryKey: ['task', parentId] })
 			})
+		},
+		onSettled: () => {
+			notifyIntegrationHealthRefresh()
 		},
 	})
 }
@@ -227,6 +231,13 @@ export function AddTaskModalProvider({ children }: { children: ReactNode }) {
 					setInput('')
 					showToast('Opgave oprettet')
 					closeModal()
+				},
+				onError: (err) => {
+					showToast(
+						err instanceof Error
+							? err.message
+							: 'Kunne ikke oprette opgave'
+					)
 				},
 			}
 		)

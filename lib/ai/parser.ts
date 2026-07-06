@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import OpenAI from 'openai'
 import { DurationBucket, TaskType } from '@prisma/client'
+import { classifyOpenAiError } from '@/lib/openai-errors'
+import {
+	recordIntegrationHealth,
+	OPENAI_SERVICE,
+} from '@/lib/integration-health'
 
 const parserOutputSchema = z.object({
   suggestions: z.record(z.object({
@@ -95,12 +100,182 @@ Returnér kun gyldig JSON, ingen markdown.
 
 Hvis overrideExamples er angivet: Brugeren har tidligere rettet lignende opgaver. Vægt disse eksempler HØJT – brug samme mønster for type, durationBucket, tags osv. når rawText ligner.`
 
+const DURATION_BUCKETS = ['LT15', 'M15_30', 'M30_60', 'GT60'] as const
+
+function extractSuggestionValue(
+	obj: Record<string, unknown>,
+	key: string
+): unknown {
+	const direct = obj[key]
+	if (direct !== undefined && direct !== null) return direct
+	const suggestions = obj.suggestions
+	if (!suggestions || typeof suggestions !== 'object') return undefined
+	const entry = (suggestions as Record<string, unknown>)[key]
+	if (entry && typeof entry === 'object' && entry !== null && 'value' in entry) {
+		return (entry as { value?: unknown }).value
+	}
+	return undefined
+}
+
+function normalizeDurationBucket(value: unknown): DurationBucket | undefined {
+	if (typeof value !== 'string') return undefined
+	const trimmed = value.trim()
+	const upper = trimmed.toUpperCase()
+	if (DURATION_BUCKETS.includes(upper as (typeof DURATION_BUCKETS)[number])) {
+		return upper as DurationBucket
+	}
+	const lower = trimmed.toLowerCase()
+	if (/under\s*15|<\s*15|10\s*min|5\s*min/.test(lower)) return DurationBucket.LT15
+	if (/15\s*[-–]\s*30|20\s*min|25\s*min/.test(lower)) return DurationBucket.M15_30
+	if (/30\s*[-–]\s*60|45\s*min|ca\.?\s*30|ca\.?\s*45|30\s*min/.test(lower)) {
+		return DurationBucket.M30_60
+	}
+	if (/over\s*60|over\s*1\s*time|2\s*timer?|\b90\s*min/.test(lower)) {
+		return DurationBucket.GT60
+	}
+	return undefined
+}
+
+export function inferDurationBucketFromText(text: string): DurationBucket | undefined {
+	const t = text.toLowerCase()
+	const minMatch = t.match(/(\d+)\s*min/)
+	if (minMatch) {
+		const mins = Number.parseInt(minMatch[1], 10)
+		if (Number.isFinite(mins)) {
+			if (mins < 15) return DurationBucket.LT15
+			if (mins < 30) return DurationBucket.M15_30
+			if (mins < 60) return DurationBucket.M30_60
+			return DurationBucket.GT60
+		}
+	}
+	const hourMatch = t.match(/(\d+(?:[.,]\d+)?)\s*(time|timer|t)\b/)
+	if (hourMatch) {
+		const hours = Number.parseFloat(hourMatch[1].replace(',', '.'))
+		if (Number.isFinite(hours)) {
+			if (hours < 0.25) return DurationBucket.LT15
+			if (hours < 0.5) return DurationBucket.M15_30
+			if (hours <= 1) return DurationBucket.M30_60
+			return DurationBucket.GT60
+		}
+	}
+	if (/\b(under\s*)?15\s*min\b/.test(t)) return DurationBucket.LT15
+	if (/\b15\s*[-–]\s*30\s*min\b/.test(t)) return DurationBucket.M15_30
+	if (/\b30\s*[-–]\s*60\s*min\b|\bca\.?\s*30\b|\bca\.?\s*45\b/.test(t)) {
+		return DurationBucket.M30_60
+	}
+	if (/\bover\s*60\b|\bover\s*1\s*time\b/.test(t)) return DurationBucket.GT60
+	return undefined
+}
+
+function normalizeParserOutput(
+	obj: Record<string, unknown>,
+	rawText: string
+): ParserOutput {
+	const safe: ParserOutput = {}
+
+	const title = extractSuggestionValue(obj, 'title')
+	if (typeof title === 'string') safe.title = title
+
+	const customer = extractSuggestionValue(obj, 'customer')
+	if (typeof customer === 'string' || customer === null) safe.customer = customer
+
+	const delegatedTo = extractSuggestionValue(obj, 'delegatedTo')
+	if (typeof delegatedTo === 'string' || delegatedTo === null) {
+		safe.delegatedTo = delegatedTo
+	}
+
+	const type = extractSuggestionValue(obj, 'type')
+	if (
+		typeof type === 'string' &&
+		['kunde', 'internt', 'salg', 'ledelse'].includes(type)
+	) {
+		safe.type = type as TaskType
+	}
+
+	const durationRaw = extractSuggestionValue(obj, 'durationBucket')
+	const durationBucket =
+		normalizeDurationBucket(durationRaw) ??
+		inferDurationBucketFromText(rawText) ??
+		DurationBucket.M30_60
+	safe.durationBucket = durationBucket
+
+	const importance = extractSuggestionValue(obj, 'importance')
+	if (
+		typeof importance === 'number' &&
+		importance >= 0 &&
+		importance <= 100
+	) {
+		safe.importance = importance
+	}
+
+	const urgency = extractSuggestionValue(obj, 'urgency')
+	if (typeof urgency === 'number' && urgency >= 0 && urgency <= 100) {
+		safe.urgency = urgency
+	}
+
+	const nextAction = extractSuggestionValue(obj, 'nextAction')
+	if (typeof nextAction === 'string' || nextAction === null) {
+		safe.nextAction = nextAction
+	}
+
+	const dueAt = extractSuggestionValue(obj, 'dueAt')
+	if (typeof dueAt === 'string' || dueAt === null) safe.dueAt = dueAt
+
+	const canDelegate = extractSuggestionValue(obj, 'canDelegate')
+	if (typeof canDelegate === 'boolean') safe.canDelegate = canDelegate
+
+	const tags = extractSuggestionValue(obj, 'tags')
+	if (Array.isArray(tags) && tags.length > 0) {
+		const tagStrings = tags
+			.filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+			.map((t) => t.trim())
+			.slice(0, 4)
+		if (tagStrings.length > 0) safe.tags = tagStrings
+	}
+
+	const url = extractSuggestionValue(obj, 'url')
+	if (typeof url === 'string' && url.trim().length > 0) {
+		safe.url = url.trim()
+	} else if (Array.isArray(obj.urls)) {
+		const urlLines = obj.urls
+			.filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+			.map((u) => u.trim())
+		if (urlLines.length > 0) safe.url = urlLines.join('\n')
+	}
+
+	const parkOnUdviklingsliste = extractSuggestionValue(obj, 'parkOnUdviklingsliste')
+	if (typeof parkOnUdviklingsliste === 'boolean') {
+		safe.parkOnUdviklingsliste = parkOnUdviklingsliste
+	}
+
+	if (obj.suggestions && typeof obj.suggestions === 'object') {
+		safe.suggestions = obj.suggestions as ParserOutput['suggestions']
+	}
+	if (obj.matches && typeof obj.matches === 'object') {
+		safe.matches = obj.matches as ParserOutput['matches']
+	}
+	if (Array.isArray(obj.needsMoreInfo)) {
+		safe.needsMoreInfo = obj.needsMoreInfo as string[]
+	}
+	if (typeof obj.overallConfidence === 'number') {
+		safe.overallConfidence = obj.overallConfidence
+	}
+
+	return safe
+}
+
 export async function parseSmartInput(input: ParserInput): Promise<ParserOutput> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey || apiKey.trim() === '') {
-    throw new Error(
+    const message =
       'OPENAI_API_KEY er ikke sat. Tilføj den i .env (lokalt) eller Heroku Config Vars.'
+    await recordIntegrationHealth(
+      OPENAI_SERVICE,
+      false,
+      'missing_key',
+      message
     )
+    throw new Error(message)
   }
   const openai = new OpenAI({ apiKey })
   const eventsStr = input.calendarEvents.length
@@ -132,58 +307,35 @@ linkedEvent (kalenderbegivenhed denne task stammer fra – brug til type/kunde-k
 ${workHoursStr}
 ${tagNamesStr ? tagNamesStr + '\n' : ''}${blacklistStr ? blacklistStr + '\n' : ''}${overrideStr}
 
-Return strict JSON with: title (kun kort præcis handling, 1 linje), type (REQUIRED: kunde|internt|salg|ledelse), durationBucket (only: LT15 | M15_30 | M30_60 | GT60), customer, canDelegate, delegatedTo, linkedEventId, linkedEventType, dueAt (ISO), importance (0-100), urgency (0-100), quadrant (Q1-Q4), score, nextAction, tags (array of 1-4 relevante tags), url (hvis URL findes i rawText), parkOnUdviklingsliste (boolean), needsMoreInfo, overallConfidence, suggestions, matches.`
+Return strict JSON with: title (kun kort præcis handling, 1 linje), type (REQUIRED: kunde|internt|salg|ledelse), durationBucket (REQUIRED: LT15 | M15_30 | M30_60 | GT60 — gæt 30-60 min hvis ukendt), customer, canDelegate, delegatedTo, linkedEventId, linkedEventType, dueAt (ISO), importance (0-100), urgency (0-100), quadrant (Q1-Q4), score, nextAction, tags (array of 1-4 relevante tags), url (hvis URL findes i rawText), parkOnUdviklingsliste (boolean), needsMoreInfo, overallConfidence, suggestions, matches.`
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.2,
-  })
-  const raw = completion.choices[0]?.message?.content
-  if (!raw) return {}
   try {
-    const parsed = JSON.parse(raw)
-    const parsedSchema = parserOutputSchema.safeParse(parsed)
-    if (parsedSchema.success) return parsedSchema.data as ParserOutput
-    const obj = parsed as Record<string, unknown>
-    const durationBuckets = ['LT15', 'M15_30', 'M30_60', 'GT60'] as const
-    const safe: ParserOutput = {}
-    if (typeof obj.title === 'string') safe.title = obj.title
-    if (typeof obj.customer === 'string' || obj.customer === null) safe.customer = obj.customer
-    if (typeof obj.delegatedTo === 'string' || obj.delegatedTo === null) safe.delegatedTo = obj.delegatedTo
-    if (durationBuckets.includes(obj.durationBucket as (typeof durationBuckets)[number])) {
-      safe.durationBucket = obj.durationBucket as DurationBucket
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+    })
+    await recordIntegrationHealth(OPENAI_SERVICE, true)
+    const raw = completion.choices[0]?.message?.content
+    if (!raw) return {}
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      return normalizeParserOutput(parsed, input.rawText)
+    } catch {
+      return {}
     }
-    if (typeof obj.importance === 'number' && obj.importance >= 0 && obj.importance <= 100) safe.importance = obj.importance
-    if (typeof obj.urgency === 'number' && obj.urgency >= 0 && obj.urgency <= 100) safe.urgency = obj.urgency
-    if (typeof obj.nextAction === 'string' || obj.nextAction === null) safe.nextAction = obj.nextAction
-    if (typeof obj.dueAt === 'string' || obj.dueAt === null) safe.dueAt = obj.dueAt
-    if (typeof obj.type === 'string' && ['kunde', 'internt', 'salg', 'ledelse'].includes(obj.type)) safe.type = obj.type as TaskType
-    if (typeof obj.canDelegate === 'boolean') safe.canDelegate = obj.canDelegate
-    if (Array.isArray(obj.tags) && obj.tags.length > 0) {
-      const tagStrings = obj.tags
-        .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-        .map((t) => t.trim())
-        .slice(0, 4)
-      if (tagStrings.length > 0) safe.tags = tagStrings
-    }
-    if (typeof obj.url === 'string' && obj.url.trim().length > 0) {
-      safe.url = obj.url.trim()
-    } else if (Array.isArray(obj.urls)) {
-      const urlLines = obj.urls
-        .filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
-        .map((u) => u.trim())
-      if (urlLines.length > 0) safe.url = urlLines.join('\n')
-    }
-    if (typeof obj.parkOnUdviklingsliste === 'boolean') {
-      safe.parkOnUdviklingsliste = obj.parkOnUdviklingsliste
-    }
-    return safe
-  } catch {
-    return {}
+  } catch (err) {
+    const classified = classifyOpenAiError(err)
+    await recordIntegrationHealth(
+      OPENAI_SERVICE,
+      false,
+      classified.code,
+      classified.message
+    )
+    throw new Error(classified.message)
   }
 }

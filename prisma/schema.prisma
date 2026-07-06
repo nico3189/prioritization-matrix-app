@@ -254,3 +254,12 @@ model TaskTag {
   @@id([taskId, tagId])
   @@index([tagId])
 }
+
+model IntegrationHealth {
+  service   String   @id
+  healthy   Boolean  @default(true)
+  errorCode String?
+  message   String?
+  checkedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

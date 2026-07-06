@@ -7,6 +7,7 @@ import { signOut } from 'next-auth/react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { AddTaskModalProvider } from '@/components/add-task-modal'
+import { IntegrationAlerts } from '@/components/integration-alerts'
 
 const iconClass = 'w-5 h-5 shrink-0'
 
@@ -370,6 +371,7 @@ export function AppShell({ user, children }: AppShellProps) {
         )}
       >
         <div className="w-full max-w-screen-2xl mx-auto">
+          <IntegrationAlerts />
           {children}
         </div>
       </main>

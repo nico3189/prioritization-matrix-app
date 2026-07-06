@@ -8,6 +8,7 @@ import { AppDatePicker } from '@/components/app-date-picker'
 import { cn } from '@/lib/utils'
 import { getScore } from '@/lib/eisenhower'
 import { useToast } from '@/components/toast'
+import { notifyIntegrationHealthRefresh } from '@/components/integration-alerts'
 import { LinkFavicon } from '@/components/link-favicon'
 import { ensureUrlProtocol, getLinkHostname } from '@/lib/link-favicon'
 import { LinkCalendarEventSection } from '@/components/link-calendar-event-section'
@@ -381,14 +382,27 @@ function useSyncTaskUrgency() {
 function useReParseTask() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) =>
-      fetch(`/api/tasks/${id}/parse`, { method: 'POST' }).then((r) => {
-        if (!r.ok) throw new Error('Parse fejlede')
-        return r.json()
-      }),
+    mutationFn: async (id: string) => {
+      const r = await fetch(`/api/tasks/${id}/parse`, { method: 'POST' })
+      if (!r.ok) {
+        const body = (await r.json().catch(() => ({}))) as {
+          error?: string
+          detail?: string
+        }
+        const message =
+          body.detail?.trim() ||
+          body.error?.trim() ||
+          'AI-parse fejlede'
+        throw new Error(message)
+      }
+      return r.json()
+    },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       qc.invalidateQueries({ queryKey: ['task', data.id] })
+    },
+    onSettled: () => {
+      notifyIntegrationHealthRefresh()
     },
   })
 }
@@ -1990,10 +2004,18 @@ export function TaskOverlay({ taskId, onClose }: TaskOverlayProps) {
                           onClick={() => {
                             setActionsOpen(false)
                             if (task) {
+                              showToast('Parser opgaven…')
                               reParseTask.mutate(task.id, {
                                 onSuccess: (data) => {
                                   setForm(formFromTask(data))
                                   showToast('AI har genparset opgaven')
+                                },
+                                onError: (err) => {
+                                  showToast(
+                                    err instanceof Error
+                                      ? err.message
+                                      : 'AI-parse fejlede'
+                                  )
                                 },
                               })
                             }
